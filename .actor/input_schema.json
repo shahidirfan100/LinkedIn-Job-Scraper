@@ -1,13 +1,13 @@
 {
-  "title": "LinkedIn Jobs Scraper (HTTP + Cheerio, v3)",
-  "description": "Fast LinkedIn jobs scraper using guest endpoints; robust description fetch. Alpine build style.",
+  "title": "Indeed Jobs Scraper",
+  "description": "Scrapes job postings from Indeed.",
   "type": "object",
   "schemaVersion": 1,
   "properties": {
     "query": {
       "title": "Search query",
       "type": "string",
-      "description": "Job title or keywords to search on LinkedIn Jobs.",
+      "description": "Job title or keywords to search on Indeed Jobs.",
       "editor": "textfield",
       "default": "Software Engineer"
     },
@@ -26,14 +26,16 @@
       "enum": [
         "anytime",
         "24h",
+        "3d",
         "7d",
-        "30d"
+        "14d"
       ],
       "enumTitles": [
         "Any time",
         "Past 24 hours",
+        "Past 3 days",
         "Past 7 days",
-        "Past 30 days"
+        "Past 14 days"
       ],
       "default": "anytime"
     },
