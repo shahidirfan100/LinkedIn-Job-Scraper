@@ -1,0 +1,77 @@
+{
+  "title": "LinkedIn Jobs Scraper (HTTP + Cheerio, v3)",
+  "description": "Fast LinkedIn jobs scraper using guest endpoints; robust description fetch. Alpine build style.",
+  "type": "object",
+  "schemaVersion": 1,
+  "properties": {
+    "query": {
+      "title": "Search query",
+      "type": "string",
+      "description": "Job title or keywords to search on LinkedIn Jobs.",
+      "editor": "textfield",
+      "default": "Software Engineer"
+    },
+    "location": {
+      "title": "Location",
+      "type": "string",
+      "description": "Geographic location (e.g., United States, Germany, Remote).",
+      "editor": "textfield",
+      "default": "United States"
+    },
+    "timeRange": {
+      "title": "Posted time filter",
+      "type": "string",
+      "description": "Limit results to when jobs were posted.",
+      "editor": "select",
+      "enum": [
+        "anytime",
+        "24h",
+        "7d",
+        "30d"
+      ],
+      "enumTitles": [
+        "Any time",
+        "Past 24 hours",
+        "Past 7 days",
+        "Past 30 days"
+      ],
+      "default": "anytime"
+    },
+    "maxJobs": {
+      "title": "Max jobs",
+      "type": "integer",
+      "description": "Maximum number of jobs to collect.",
+      "editor": "number",
+      "default": 150,
+      "minimum": 1
+    },
+    "collectOnly": {
+      "title": "Collect only (no details)",
+      "type": "boolean",
+      "description": "Collect job URLs only and push minimal items (fast sanity mode).",
+      "editor": "checkbox",
+      "default": false
+    },
+    "maxConcurrency": {
+      "title": "Max concurrency",
+      "type": "integer",
+      "description": "Parallel HTTP requests (CheerioCrawler).",
+      "editor": "number",
+      "default": 5,
+      "minimum": 1,
+      "maximum": 20
+    },
+    "proxyConfiguration": {
+      "title": "Proxy configuration",
+      "type": "object",
+      "description": "Select proxies to be used by the crawler (Apify Proxy recommended; RESIDENTIAL helps).",
+      "editor": "proxy",
+      "prefill": {
+        "useApifyProxy": true
+      }
+    }
+  },
+  "required": [
+    "query"
+  ]
+}
