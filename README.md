@@ -1,4 +1,7 @@
-# LinkedIn Jobs Scraper (HTTP + Cheerio, v3)
-- Alpine build like your reference log. No Playwright. Uses Crawlee CheerioCrawler.
-- Collects links via `jobs-guest` list endpoint. Fetches details via static HTML; if missing, tries guest detail endpoints.
-- FIX: replaced `requestAsBrowser` import with `gotScraping` to avoid Crawlee export mismatch.
+# LinkedIn Jobs Scraper
+
+This actor scrapes job listings from LinkedIn based on your search criteria.
+
+- Fetches job details including title, company, location, and full description.
+- Uses a robust, multi-step process to retrieve job descriptions, ensuring high success rates.
+- For best performance and to avoid blocks, using residential proxies is highly recommended.
