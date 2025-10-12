@@ -1,56 +1,20 @@
 /**
  * ============================================================================
  *  LinkedIn Job Scraper — Keyword Mode (Guest API, High-Throughput, Stealth)
- *  main.js
- *  --------------------------------------------------------------------------
- *  Inputs (examples):
- *    {
- *      "keywords": ["react developer", "python engineer"],
- *      "location": "Berlin",
- *      "timeRange": "24h|7d|30d|anytime",
- *      "maxJobs": 500,
- *      "maxConcurrency": 24,
- *      "proxyConfiguration": { "useApifyProxy": true, "apifyProxyGroups": ["RESIDENTIAL"] }
- *    }
- *  Back-compat inputs:
- *    - keyword / query (string)
- *    - results_wanted (alias for maxJobs)
- *    - posted_date (alias for timeRange)
- *
- *  Outputs:
- *    One record per job:
- *      {
- *        jobUrl, jobId, title, company, companyUrl, location,
- *        postedAt, workType, seniority,
- *        descriptionHtml, descriptionText,
- *        collectedAt, searchQuery, searchLocation, searchTimeRange
- *      }
- *
- *  Notes:
- *    - STRICTLY guest endpoints (no login, super fast):
- *        List:   /jobs-guest/jobs/api/seeMoreJobPostings/search
- *        Detail: /jobs-guest/jobs/api/jobPosting/{jobId}
- *    - Tuned for speed without tripping anti-bot (403/999) via:
- *        * UA rotation
- *        * realistic headers + referer
- *        * light jitter on every request
- *        * paced burst control (intervalCap) + concurrency caps
- *        * small cool-downs on repeated failures
- *    - Preserves selectors commonly used in your codebase; no breaking changes.
+ *  main.js  (NO external queue deps; works on Apify base images)
  * ============================================================================
  */
 
 import { Actor } from 'apify';
 import { Dataset, log } from 'crawlee';
 import { gotScraping } from 'got-scraping';
-import PQueue from 'p-queue';
 import * as cheerio from 'cheerio';
 
 // ------------------------------- Constants ----------------------------------
 
 const TPR_MAP = { '24h': 'r86400', '7d': 'r604800', '30d': 'r2592000' };
 
-// Mix of modern desktop & mobile UAs; rotated per request
+// Rotated per request
 const UA_POOL = [
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:130.0) Gecko/20100101 Firefox/130.0',
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 13_6) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15',
@@ -138,7 +102,7 @@ const buildGuestListParams = (kw, loc, time) => {
 const guestListUrl = (params, start) => {
   const p = new URLSearchParams(params);
   p.set('start', String(start));
-  // Light fingerprint noise: add a noop query to break caches/CDN heuristics
+  // harmless tracker param to vary the URL and reduce edge-caching patterns
   p.set('trk', 'public_jobs_jserp-result');
   return `https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?${p.toString()}`;
 };
@@ -148,7 +112,7 @@ const guestDetailUrl = (jobId) =>
 
 const fetchPage = async (url, proxyUrl) => {
   const ua = UA_POOL[Math.floor(Math.random() * UA_POOL.length)];
-  await sleep(rnd(60, 180)); // small jitter on every call
+  await sleep(rnd(60, 180)); // tiny jitter
   const res = await gotScraping({
     url,
     headers: { ...DEFAULT_HEADERS, referer: 'https://www.linkedin.com/jobs/search/', 'user-agent': ua },
@@ -190,7 +154,7 @@ const extractJobIdsFromListHtml = (html) => {
 // --------------------------- Extraction (Selectors) --------------------------
 
 const extractDescription = ($) => {
-  // Keep all common containers used across your codebase
+  // Keep common containers used across your codebase
   const containers = [
     'div.show-more-less-html__markup',
     'div.description__text',
@@ -251,6 +215,85 @@ const extractJobData = ($, url, ctx) => {
   };
 };
 
+// --------------------------- Lightweight Task Pool ---------------------------
+/**
+ * Simple dependency-free pool with:
+ *  - max concurrency
+ *  - per-interval cap (token bucket)
+ *  - optional proxy rotation callback on failure streaks
+ */
+class TaskPool {
+  constructor({ concurrency, intervalMs, intervalCap }) {
+    this.concurrency = Math.max(1, concurrency || 8);
+    this.intervalMs = intervalMs || 1000;
+    this.intervalCap = Math.max(1, intervalCap || this.concurrency);
+    this.running = 0;
+    this.queue = [];
+    this.timestamps = []; // start times within the current interval window
+    this.idleResolvers = [];
+  }
+
+  _pruneWindow(now) {
+    while (this.timestamps.length && now - this.timestamps[0] > this.intervalMs) {
+      this.timestamps.shift();
+    }
+  }
+
+  async _takeSlot() {
+    while (true) {
+      const now = Date.now();
+      this._pruneWindow(now);
+      if (this.running < this.concurrency && this.timestamps.length < this.intervalCap) {
+        this.running++;
+        this.timestamps.push(now);
+        return;
+      }
+      // wait a bit and try again
+      await sleep(30);
+    }
+  }
+
+  _release() {
+    this.running--;
+    // drain queued tasks
+    this._drain();
+    // resolve idle if no work
+    if (this.running === 0 && this.queue.length === 0) {
+      this.idleResolvers.splice(0).forEach((r) => r());
+    }
+  }
+
+  _drain() {
+    while (this.queue.length && this.running < this.concurrency) {
+      const task = this.queue.shift();
+      task();
+    }
+  }
+
+  add(fn) {
+    return new Promise((resolve, reject) => {
+      const run = async () => {
+        try {
+          await this._takeSlot();
+          const res = await fn();
+          resolve(res);
+        } catch (e) {
+          reject(e);
+        } finally {
+          this._release();
+        }
+      };
+      this.queue.push(run);
+      this._drain();
+    });
+  }
+
+  onIdle() {
+    if (this.running === 0 && this.queue.length === 0) return Promise.resolve();
+    return new Promise((r) => this.idleResolvers.push(r));
+  }
+}
+
 // ------------------------------- Runner -------------------------------------
 
 await Actor.init();
@@ -261,19 +304,16 @@ const {
   maxConcurrency, proxyConfiguration,
 } = normalizeInput(raw);
 
-// Proxy: we keep a base configuration, but obtain a per-window URL to reduce reuse
 const proxyConfig = await Actor.createProxyConfiguration(proxyConfiguration);
 
-// For stability: fix a proxy URL for a burst window; rotate on failure spikes
+// Use a stable proxy URL per phase; rotate on streak failures
 let currentProxyUrl = proxyConfig ? await proxyConfig.newUrl() : undefined;
 let failureStreak = 0;
 
-// Collection state
-const allJobIds = new Set();        // global unique job IDs
-const ctxById = Object.create(null); // per-id search context
+const allJobIds = new Set();
+const ctxById = Object.create(null);
 let pagesFetched = 0;
 
-// High-level log
 log.info(`🔎 Keywords: ${keywords.join(' | ')} | Location: "${location}" | Time: ${timeRange}`);
 log.info(`🎯 Target jobs: ${maxJobs} | Concurrency: ${maxConcurrency}`);
 
@@ -293,19 +333,16 @@ for (const kw of keywords) {
     try {
       html = await fetchPage(url, currentProxyUrl);
       pagesFetched++;
-      failureStreak = 0; // reset on success
+      failureStreak = 0;
     } catch (e) {
       failureStreak++;
       log.warning(`List fetch error (start=${start}, kw="${kw}"): ${e.message}`);
-      // mini cooldown
       await sleep(rnd(350, 900));
-      // rotate proxy occasionally if we keep failing
       if (proxyConfig && failureStreak >= 3) {
         currentProxyUrl = await proxyConfig.newUrl();
         failureStreak = 0;
         log.info('🔁 Rotated proxy for list fetches due to failures.');
       }
-      // try next page or break if repeated empties
     }
 
     const ids = extractJobIdsFromListHtml(html);
@@ -314,7 +351,6 @@ for (const kw of keywords) {
     for (const id of ids) {
       if (!allJobIds.has(id)) {
         allJobIds.add(id);
-        // store the first context we see for this id
         if (!ctxById[id]) ctxById[id] = { searchQuery: kw, searchLocation: location, searchTimeRange: timeRange };
         newlyAdded++;
         if (allJobIds.size >= maxJobs) break;
@@ -324,34 +360,28 @@ for (const kw of keywords) {
     log.info(`[${kw}] start=${start} → page=${ids.length}, new=${newlyAdded}, total=${allJobIds.size}/${maxJobs}`);
 
     pageStreakWithoutNew = newlyAdded === 0 ? pageStreakWithoutNew + 1 : 0;
-    if (ids.length === 0 || pageStreakWithoutNew >= 2) {
-      // no more results or stale pagination
-      break;
-    }
+    if (ids.length === 0 || pageStreakWithoutNew >= 2) break;
 
-    start += 25; // LinkedIn standard step
-    await sleep(rnd(140, 320)); // spread list paging a bit
+    start += 25; // LinkedIn page step
+    await sleep(rnd(140, 320));
   }
 }
 
-// Summary of collection
 log.info(`📄 Pages fetched: ${pagesFetched} | Unique IDs: ${allJobIds.size}`);
 
 // ----------------------- DETAIL: Parallel fetch + parse ----------------------
 
 const idsList = Array.from(allJobIds);
-// PQueue to pace bursts (intervalCap ≈ per-second cap)
-const queue = new PQueue({
+
+// Token bucket-ish pacing: per-second cap ≈ 1.6x concurrency (tunable)
+const pool = new TaskPool({
   concurrency: maxConcurrency,
-  interval: 1000,
+  intervalMs: 1000,
   intervalCap: Math.max(10, Math.floor(maxConcurrency * 1.6)),
-  carryoverConcurrencyCount: true,
 });
 
 let processed = 0;
 let detailFailures = 0;
-
-// modest rotating proxy across detail phase on streak failures
 let detailProxyUrl = currentProxyUrl;
 
 const runDetail = async (jobId) => {
@@ -362,7 +392,6 @@ const runDetail = async (jobId) => {
     const $ = cheerio.load(html);
     let record = extractJobData($, url, ctxById[jobId] || {});
 
-    // one light retry if title missing (rare truncated HTML)
     if (!record.title) {
       await sleep(rnd(120, 300));
       const html2 = await fetchPage(url, detailProxyUrl);
@@ -376,25 +405,23 @@ const runDetail = async (jobId) => {
   } catch (e) {
     detailFailures++;
     log.debug(`Detail error ${jobId}: ${e.message}`);
-    // On occasional spikes, brief cool-down
-    if (detailFailures % 12 === 0) {
-      await sleep(rnd(800, 1600));
-      if (proxyConfig) {
-        detailProxyUrl = await proxyConfig.newUrl();
-        log.info('🔁 Rotated proxy for detail fetches due to failures.');
-      }
+    if (detailFailures % 12 === 0 && proxyConfig) {
+      detailProxyUrl = await proxyConfig.newUrl();
+      log.info('🔁 Rotated proxy for detail fetches due to failures.');
     }
+    // brief cooldown on repeated errors
+    if (detailFailures % 8 === 0) await sleep(rnd(600, 1400));
   }
 };
 
-// Add tasks
+// Enqueue
 for (const id of idsList) {
   if (processed >= maxJobs) break;
-  queue.add(() => runDetail(id));
+  pool.add(() => runDetail(id));
 }
 
-// Wait for all queued detail tasks to finish
-await queue.onIdle();
+// Wait for all to finish
+await pool.onIdle();
 
 // Final log + exit
 log.info(`✅ Done. Jobs pushed: ${processed} | Failures: ${detailFailures} | Requested: ${maxJobs}`);
