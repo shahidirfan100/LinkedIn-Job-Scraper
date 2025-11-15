@@ -8,7 +8,7 @@
     "companyUrl": "string",
     "location": "string",
     "salary": "string",
-    "jobType": "string",
+    "workType": "string",
     "seniority": "string",
     "postedAt": "string",
     "descriptionText": "string",
@@ -26,7 +26,7 @@
           "title",
           "company",
           "location",
-          "jobType",
+          "workType",
           "salary",
           "postedAt",
           "jobUrl"
@@ -47,7 +47,7 @@
             "label": "Location",
             "format": "text"
           },
-              "jobType": {
+              "workType": {
                 "label": "Job Type",
                 "format": "text"
               },
@@ -55,7 +55,7 @@
             "label": "Salary",
             "format": "text"
           },
-          "date_posted": {
+          "postedAt": {
             "label": "Posted",
             "format": "text"
           },

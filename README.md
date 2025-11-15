@@ -74,11 +74,12 @@ Results are delivered as a JSON array containing detailed job objects with the f
 | `company` | string | Organization offering the position |
 | `location` | string | Geographic location of the job |
 | `salary` | string | Compensation information when disclosed |
-| `jobType` | string | Employment classification (Full-time, Part-time, etc.) |
-| `description` | string | Complete job posting content |
-| `url` | string | Direct hyperlink to the original LinkedIn job listing |
-| `postedDate` | string | Publication date of the job posting |
-| `scrapedAt` | string | Timestamp of data extraction |
+| `workType` | string | Employment classification (Full-time, Part-time, etc.) |
+| `descriptionText` | string | Plain-text job posting content |
+| `descriptionHtml` | string | HTML of the job description when available |
+| `jobUrl` | string | Direct hyperlink to the original LinkedIn job listing |
+| `postedAt` | string | Publication date of the job posting |
+| `collectedAt` | string | Timestamp of data extraction |
 
 ### Output Example
 
@@ -89,11 +90,11 @@ Results are delivered as a JSON array containing detailed job objects with the f
     "company": "Innovative Tech Solutions",
     "location": "San Francisco, CA",
     "salary": "$140,000 - $180,000 annually",
-    "jobType": "Full-time",
-    "description": "Join our cutting-edge team developing next-generation AI applications...",
-    "url": "https://www.linkedin.com/jobs/view/senior-ai-engineer-at-innovative-tech-solutions-987654",
-    "postedDate": "2023-11-10",
-    "scrapedAt": "2023-11-15T14:20:00Z"
+    "workType": "Full-time",
+    "descriptionText": "Join our cutting-edge team developing next-generation AI applications...",
+    "jobUrl": "https://www.linkedin.com/jobs/view/senior-ai-engineer-at-innovative-tech-solutions-987654",
+    "postedAt": "2023-11-10",
+    "collectedAt": "2023-11-15T14:20:00Z"
   }
 ]
 ```
