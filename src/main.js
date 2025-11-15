@@ -306,6 +306,10 @@ const crawler = new CheerioCrawler({
 
     // ------------------------ LIST ------------------------
     if (request.userData.label === 'LIST') {
+      if (typeof $ !== 'function') {
+        $ = cheerio.load(ctx.response?.body || '');
+      }
+
       const ids = new Set();
 
       $('div.base-card').each((_, el) => {
