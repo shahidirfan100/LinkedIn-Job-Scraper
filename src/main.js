@@ -177,27 +177,51 @@ const extractJobData = ($, url, ctx) => {
 
   const postedAt = textOf($, 'span.posted-time-ago__text, span.topcard__flavor--metadata');
 
-  let seniority = null, workType = null;
+  let seniority = null, jobType = null;
   $('li.description__job-criteria-item').each((_, li) => {
     const h = $(li).find('h3').text().toLowerCase();
     const val = pick($(li).find('span.description__job-criteria-text').text());
     if (h.includes('seniority') || h.includes('level')) seniority = val;
-    if (h.includes('employment') || h.includes('type')) workType = val;
+    if (h.includes('employment') || h.includes('type')) jobType = val;
   });
 
   const { html: descriptionHtml, text: descriptionText } = extractDescription($);
+
+  // Salary: LinkedIn uses multiple selectors; collect best available
+  let salary = null;
+  for (const s of ['span.salary', 'div.salary', 'span.compensation', 'li.salary', 'span.salary-text', 'div.compensation']) {
+    const v = pick($(s).first().text());
+    if (v && v.length > 2) { salary = v; break; }
+  }
+
+  // URNs are useful for dedup and linking to internal objects
+  const html = $.html();
+  const companyUrn = (html.match(/urn:li:fs_normalized_company:[^"\s>]+/) || [])[0] || null;
+  const jobPostingUrn = (html.match(/urn:li:jobPosting:\d+/) || [])[0] || null;
 
   return {
     jobUrl: url,
     jobId: getJobId(url),
     title, company, companyUrl,
-    location, postedAt, workType, seniority,
+    location, postedAt, jobType, seniority, salary,
     descriptionHtml, descriptionText,
+    companyUrn, jobPostingUrn,
     collectedAt: new Date().toISOString(),
     searchQuery: ctx.searchQuery || '',
     searchLocation: ctx.searchLocation || '',
     searchTimeRange: ctx.searchTimeRange || 'anytime',
   };
+};
+
+const isBlockedHtml = (html) => {
+  if (!html) return true;
+  const s = html.toLowerCase();
+  // Indicators of blocked/guest pages or sign-in gate
+  if (s.includes('sign in') && s.includes('linkedin')) return true;
+  if (s.includes('access denied') || s.includes('too many requests') || s.includes('captcha')) return true;
+  // Empty listings on job pages are abnormal
+  if (s.length < 500) return true;
+  return false;
 };
 
 const makeRequestHeaders = (referer = 'https://www.linkedin.com/jobs/search/') => {
@@ -299,6 +323,24 @@ const crawler = new CheerioCrawler({
       let newCount = 0;
       const ctxInfo = request.userData.searchContext;
 
+      // If no IDs found on this LIST page, it's likely a block or an empty page.
+      if (ids.size === 0) {
+        // Rotate proxy on repeated list failures
+        failureStreakList++;
+        if (failureStreakList % 3 === 0 && proxyConfig) {
+          listProxyUrl = await proxyConfig.newUrl();
+          log.info('🔁 Rotated proxy after empty LIST detection.');
+        }
+        log.warning(`LIST page contains no job entries start=${request.userData.start} — possible block; re-enqueueing.`);
+        // Re-enqueue this LIST once with higher priority for retry
+        await addRequests([{
+          url: request.url,
+          userData: { label: 'LIST', start: request.userData.start, params: request.userData.params, searchContext: ctxInfo },
+          priority: 10,
+        }]);
+        return;
+      }
+
       for (const id of ids) {
         if (completedDetail.size >= maxJobs) break;
 
@@ -347,6 +389,21 @@ const crawler = new CheerioCrawler({
       } catch (e) {
         // Let failedRequestHandler manage retry; don't mark completed
         throw e;
+      }
+      if (isBlockedHtml(html)) {
+        // Rotate proxy and re-enqueue detail
+        failureStreakDetail++;
+        if (failureStreakDetail % 2 === 0 && proxyConfig) {
+          detailProxyUrl = await proxyConfig.newUrl();
+          log.info('🔁 Rotated proxy after blocked DETAIL response.');
+        }
+        log.warning(`Blocked or truncated detail for job ${jobId}; re-enqueueing.`);
+        await crawler.addRequests([{
+          url: guestDetailUrl(jobId),
+          userData: { label: 'DETAIL', jobId },
+          priority: 6,
+        }]);
+        return;
       }
       let $html = cheerio.load(html);
 

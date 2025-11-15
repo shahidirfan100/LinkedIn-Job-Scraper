@@ -1,35 +1,22 @@
 {
   "actorSpecification": 1,
   "fields": {
-    "jobId": {
-      "type": "string",
-      "title": "Job ID",
-      "description": "LinkedIn numeric job identifier (extracted from job URL or base-card URN).",
-      "primary": true
-    },
-    "jobUrl": {
-      "type": "string",
-      "title": "Job URL",
-      "description": "Direct LinkedIn job posting URL."
-    },
-    "title": {
-      "type": "string",
-      "title": "Title",
-      "description": "Job title as shown in the posting."
-    },
-    "company": { "type": "string", "title": "Company", "description": "Hiring company name." },
-    "companyUrl": { "type": "string", "title": "Company URL", "description": "Link to the company page when available." },
-    "location": { "type": "string", "title": "Location", "description": "Job location string as provided on LinkedIn." },
-    "salary": { "type": "string", "title": "Salary", "description": "Compensation information when included in the listing." },
-    "jobType": { "type": "string", "title": "Job type", "description": "Employment type (e.g., Full-time, Part-time, Contract)." },
-    "seniority": { "type": "string", "title": "Seniority", "description": "Job seniority/level when provided (e.g., Senior, Mid)." },
-    "postedAt": { "type": "string", "title": "Posted at", "description": "Date or relative time when the job was posted." },
-    "descriptionText": { "type": "string", "title": "Description (text)", "description": "Plain-text job description extracted from the page." },
-    "descriptionHtml": { "type": "string", "title": "Description (HTML)", "description": "HTML of the job description to preserve formatting." },
-    "collectedAt": { "type": "string", "format": "date-time", "title": "Scraped at", "description": "Timestamp when this item was scraped by the actor." },
-    "searchQuery": { "type": "string", "title": "Search query", "description": "The keyword used to find this job during the run." },
-    "searchLocation": { "type": "string", "title": "Search location", "description": "The location filter applied during the run." },
-    "searchTimeRange": { "type": "string", "title": "Search time range", "description": "Time range filter used (24h, 7d, 30d, anytime)." }
+    "jobId": "string",
+    "jobUrl": "string",
+    "title": "string",
+    "company": "string",
+    "companyUrl": "string",
+    "location": "string",
+    "salary": "string",
+    "jobType": "string",
+    "seniority": "string",
+    "postedAt": "string",
+    "descriptionText": "string",
+    "descriptionHtml": "string",
+    "collectedAt": "string",
+    "searchQuery": "string",
+    "searchLocation": "string",
+    "searchTimeRange": "string"
   },
   "views": {
     "overview": {
