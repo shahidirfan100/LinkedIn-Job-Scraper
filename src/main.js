@@ -36,12 +36,21 @@ const DEFAULT_HEADERS = {
   'sec-fetch-mode': 'navigate',
   'sec-fetch-site': 'none',
   'cache-control': 'no-cache',
+  'connection': 'keep-alive',
 };
 
 const CH_UA_POOL = [
   '"Chromium";v="127", "Not;A Brand";v="99"',
   '"Google Chrome";v="127", "Not;A Brand";v="99"',
   '"Microsoft Edge";v="127", "Not;A Brand";v="99"',
+];
+
+const PLATFORM_POOL = [
+  '"Windows"',
+  '"macOS"',
+  '"Linux"',
+  '"Android"',
+  '"iOS"',
 ];
 
 const ACCEPT_LANGUAGE_POOL = [
@@ -100,9 +109,10 @@ const fetchPage = async (url, proxyUrl) => {
   await sleep(rnd(20, 60)); // tiny jitter
   const res = await gotScraping({
     url,
-    headers: { ...DEFAULT_HEADERS, referer: 'https://www.linkedin.com/jobs/search/', 'user-agent': ua, 'sec-ch-ua': secChUa, 'sec-ch-ua-mobile': '?0', 'sec-ch-ua-platform': '"Windows"', 'accept-language': acceptLang },
+    headers: { ...DEFAULT_HEADERS, referer: 'https://www.linkedin.com/jobs/search/', 'user-agent': ua, 'sec-ch-ua': secChUa, 'sec-ch-ua-mobile': '?0', 'sec-ch-ua-platform': PLATFORM_POOL[Math.floor(Math.random() * PLATFORM_POOL.length)], 'accept-language': acceptLang },
     proxyUrl,
-    timeout: { request: 16000 },
+    timeout: { request: 12000 },
+    http2: true,
     retry: { limit: 1 },
   });
   log.debug(`Fetch ${url.slice(0, 140)} | code=${res.statusCode} | len=${(res.body || '').length}`);
@@ -236,7 +246,7 @@ const makeRequestHeaders = (referer = 'https://www.linkedin.com/jobs/search/') =
     'accept-language': acceptLang,
     'sec-ch-ua': secChUa,
     'sec-ch-ua-mobile': '?0',
-    'sec-ch-ua-platform': '"Windows"',
+    'sec-ch-ua-platform': PLATFORM_POOL[Math.floor(Math.random() * PLATFORM_POOL.length)],
   };
 };
 
@@ -272,7 +282,9 @@ if (!keywordsArr.length) throw new Error('Provide at least one keyword via "keyw
 const locationStr = (location || '').trim();
 const timeRangeStr = (timeRange || posted_date || 'anytime').toLowerCase();
 const maxJobs = Math.max(1, Math.min(10000, Number(IN_maxJobs) || Number(results_wanted) || 300));
-const maxConcurrency = Math.max(6, Math.min(48, Number(IN_maxConcurrency) || 24));
+const userMaxConcurrency = Number(IN_maxConcurrency) || 24;
+const defaultUpper = proxyConfiguration && proxyConfiguration.useApifyProxy ? 128 : 48;
+const maxConcurrency = Math.max(8, Math.min(defaultUpper, userMaxConcurrency));
 
 const proxyConfig = await Actor.createProxyConfiguration(proxyConfiguration);
 // Stable proxy per phase; rotate on streak failures
@@ -288,6 +300,10 @@ const crawler = new CheerioCrawler({
   useSessionPool: true,
   maxConcurrency,
   minConcurrency: Math.max(3, Math.floor(maxConcurrency / 2)),
+  sessionPoolOptions: {
+    // Increase session pool size so sessions can be reused concurrently and rotated quickly
+    maxPoolSize: Math.max(20, Math.floor(maxConcurrency * 2)),
+  },
   maxRequestRetries: 1,
   requestHandlerTimeoutSecs: 25,
   navigationTimeoutSecs: 25,
@@ -296,7 +312,7 @@ const crawler = new CheerioCrawler({
   preNavigationHooks: [
     async ({ request }) => {
       request.headers = makeRequestHeaders('https://www.linkedin.com/jobs/search/');
-      await sleep(rnd(10, 40));
+      await sleep(rnd(6, Math.max(20, Math.floor(maxConcurrency / 4))));
     },
   ],
 
@@ -310,9 +326,27 @@ const crawler = new CheerioCrawler({
         $ = cheerio.load(ctx.response?.body || '');
       }
 
+      // Try regex-based extraction first (fast):
       const ids = new Set();
+      const bodyStr = request.response?.body || '';
+      const regexIds = (bodyStr.match(/jobs\/view\/(\d{8,})/g) || []);
+      for (const t of regexIds) { const id = getJobId(t); if (id) ids.add(id); }
+      // Slow but robust DOM extraction as a fallback — only if regex didn't find many
+      if (ids.size < 2) {
+        $('div.base-card').each((_, el) => {
+          const urn = $(el).attr('data-entity-urn');
+          const id = urn?.match(/\d{8,}/)?.[0];
+          if (id) ids.add(id);
+        });
+        $('a[href*="jobs/view"]').each((_, el) => {
+          const id = getJobId($(el).attr('href'));
+          if (id) ids.add(id);
+        });
+        const m = (bodyStr.match(/\bjobs\/view\/(\d{8,})/g) || []);
+        for (const t of m) { const id = getJobId(t); if (id) ids.add(id); }
+      }
 
-      $('div.base-card').each((_, el) => {
+          $('div.base-card').each((_, el) => {
         const urn = $(el).attr('data-entity-urn');
         const id = urn?.match(/\d{8,}/)?.[0];
         if (id) ids.add(id);
@@ -321,7 +355,7 @@ const crawler = new CheerioCrawler({
         const id = getJobId($(el).attr('href'));
         if (id) ids.add(id);
       });
-      const m = request.loadedUrl?.match(/\bjobs\/view\/(\d{8,})/g) || [];
+      const m = (request.response?.body || '').match(/\bjobs\/view\/(\d{8,})/g) || [];
       for (const t of m) { const id = getJobId(t); if (id) ids.add(id); }
 
       let newCount = 0;
@@ -345,6 +379,7 @@ const crawler = new CheerioCrawler({
         return;
       }
 
+      const toAdd = [];
       for (const id of ids) {
         if (completedDetail.size >= maxJobs) break;
 
@@ -357,13 +392,11 @@ const crawler = new CheerioCrawler({
         // Immediately enqueue detail if not already
         if (!enqueuedDetail.has(id) && completedDetail.size < maxJobs) {
           enqueuedDetail.add(id);
-          await addRequests([{
-            url: guestDetailUrl(id),
-            userData: { label: 'DETAIL', jobId: id },
-            priority: 5,
-          }]);
+          toAdd.push({ url: guestDetailUrl(id), userData: { label: 'DETAIL', jobId: id }, priority: 5 });
         }
       }
+
+      if (toAdd.length) await addRequests(toAdd);
 
       log.info(`LIST start=${request.userData.start} | pageIds=${ids.size} | new=${newCount} | totalFound=${collectedIds.size} | pushed=${completedDetail.size}/${maxJobs}`);
 
@@ -386,13 +419,15 @@ const crawler = new CheerioCrawler({
       const jobId = request.userData.jobId || getJobId(request.url);
       if (!jobId || completedDetail.has(jobId)) return;
 
-      // Always fetch with gotScraping for better control (even if crawler fetched)
-      let html;
-      try {
-        html = await fetchPage(request.url, detailProxyUrl);
-      } catch (e) {
-        // Let failedRequestHandler manage retry; don't mark completed
-        throw e;
+      // Use already-fetched response if CheerioCrawler has it, to avoid duplicate HTTP calls
+      let html = ctx.response?.body || null;
+      if (!html || isBlockedHtml(html)) {
+        try {
+          html = await fetchPage(request.url, detailProxyUrl);
+        } catch (e) {
+          // Let failedRequestHandler manage retry; don't mark completed
+          throw e;
+        }
       }
       if (isBlockedHtml(html)) {
         // Rotate proxy and re-enqueue detail
@@ -469,8 +504,8 @@ for (const kw of keywordsArr) {
   const ctxInfo = { searchQuery: kw, searchLocation: locationStr, searchTimeRange: timeRangeStr };
 
   // Aggressively pre-enqueue N pages per keyword for fast warm-up.
-  const pagesNeeded = Math.ceil(Math.min(maxJobs, 600) / 25); // up to first 600 items/keyword initially
-  const pagesToKick = Math.min(12, pagesNeeded); // initial burst cap (tune if needed)
+  const pagesNeeded = Math.ceil(Math.min(maxJobs, 2400) / 25); // up to first 2400 items/keyword initially
+  const pagesToKick = Math.min(pagesNeeded, Math.max(12, Math.floor(maxConcurrency * 4))); // seed more pages based on concurrency for fast warmup
 
   for (let i = 0; i < pagesToKick; i++) {
     const start = i * 25;
