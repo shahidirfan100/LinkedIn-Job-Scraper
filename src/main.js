@@ -38,6 +38,19 @@ const DEFAULT_HEADERS = {
   'cache-control': 'no-cache',
 };
 
+const CH_UA_POOL = [
+  '"Chromium";v="127", "Not;A Brand";v="99"',
+  '"Google Chrome";v="127", "Not;A Brand";v="99"',
+  '"Microsoft Edge";v="127", "Not;A Brand";v="99"',
+];
+
+const ACCEPT_LANGUAGE_POOL = [
+  'en-US,en;q=0.9',
+  'en-GB,en;q=0.9',
+  'en-US,en;q=0.8,fr;q=0.7',
+  'en-US,en;q=0.8,es;q=0.6',
+];
+
 // --------------------------------- Utils ------------------------------------
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -82,14 +95,17 @@ const guestDetailUrl = (id) => `https://www.linkedin.com/jobs-guest/jobs/api/job
 
 const fetchPage = async (url, proxyUrl) => {
   const ua = UA_POOL[Math.floor(Math.random() * UA_POOL.length)];
+  const secChUa = CH_UA_POOL[Math.floor(Math.random() * CH_UA_POOL.length)];
+  const acceptLang = ACCEPT_LANGUAGE_POOL[Math.floor(Math.random() * ACCEPT_LANGUAGE_POOL.length)];
   await sleep(rnd(20, 60)); // tiny jitter
   const res = await gotScraping({
     url,
-    headers: { ...DEFAULT_HEADERS, referer: 'https://www.linkedin.com/jobs/search/', 'user-agent': ua },
+    headers: { ...DEFAULT_HEADERS, referer: 'https://www.linkedin.com/jobs/search/', 'user-agent': ua, 'sec-ch-ua': secChUa, 'sec-ch-ua-mobile': '?0', 'sec-ch-ua-platform': '"Windows"', 'accept-language': acceptLang },
     proxyUrl,
     timeout: { request: 16000 },
     retry: { limit: 1 },
   });
+  log.debug(`Fetch ${url.slice(0, 140)} | code=${res.statusCode} | len=${(res.body || '').length}`);
   if (res.statusCode >= 200 && res.statusCode < 300) return res.body || '';
   throw new Error(`Bad status: ${res.statusCode}`);
 };
@@ -184,6 +200,22 @@ const extractJobData = ($, url, ctx) => {
   };
 };
 
+const makeRequestHeaders = (referer = 'https://www.linkedin.com/jobs/search/') => {
+  const ua = UA_POOL[Math.floor(Math.random() * UA_POOL.length)];
+  const secChUa = CH_UA_POOL[Math.floor(Math.random() * CH_UA_POOL.length)];
+  const acceptLang = ACCEPT_LANGUAGE_POOL[Math.floor(Math.random() * ACCEPT_LANGUAGE_POOL.length)];
+
+  return {
+    ...DEFAULT_HEADERS,
+    referer,
+    'user-agent': ua,
+    'accept-language': acceptLang,
+    'sec-ch-ua': secChUa,
+    'sec-ch-ua-mobile': '?0',
+    'sec-ch-ua-platform': '"Windows"',
+  };
+};
+
 // ------------------------------- State --------------------------------------
 
 const collectedIds = new Set();      // discovered job IDs
@@ -239,7 +271,7 @@ const crawler = new CheerioCrawler({
 
   preNavigationHooks: [
     async ({ request }) => {
-      request.headers = { ...DEFAULT_HEADERS, referer: 'https://www.linkedin.com/jobs/search/' };
+      request.headers = makeRequestHeaders('https://www.linkedin.com/jobs/search/');
       await sleep(rnd(10, 40));
     },
   ],
