@@ -6,10 +6,14 @@
     "title": "string",
     "company": "string",
     "companyUrl": "string",
+    "companyLogo": "string",
     "location": "string",
     "salary": "string",
+    "applicantsCount": "string",
     "workType": "string",
     "seniority": "string",
+    "jobFunction": "string",
+    "companyIndustry": "string",
     "postedAt": "string",
     "descriptionText": "string",
     "descriptionHtml": "string",
@@ -22,7 +26,7 @@
     "overview": {
       "title": "Overview",
       "transformation": {
-          "fields": [
+        "fields": [
           "title",
           "company",
           "location",
@@ -32,7 +36,7 @@
           "jobUrl"
         ]
       },
-          "display": {
+      "display": {
         "component": "table",
         "properties": {
           "title": {
@@ -47,11 +51,11 @@
             "label": "Location",
             "format": "text"
           },
-              "workType": {
-                "label": "Job Type",
-                "format": "text"
-              },
-              "salary": {
+          "workType": {
+            "label": "Job Type",
+            "format": "text"
+          },
+          "salary": {
             "label": "Salary",
             "format": "text"
           },
@@ -59,7 +63,7 @@
             "label": "Posted",
             "format": "text"
           },
-              "jobUrl": {
+          "jobUrl": {
             "label": "URL",
             "format": "link"
           }

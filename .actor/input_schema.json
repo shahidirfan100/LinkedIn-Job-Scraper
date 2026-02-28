@@ -9,7 +9,8 @@
       "type": "string",
       "description": "Job title or keywords to search on LinkedIn Jobs.",
       "editor": "textfield",
-      "default": "Software Engineer"
+      "default": "software engineer",
+      "prefill": "software engineer"
     },
     "location": {
       "title": "Location",
@@ -42,7 +43,8 @@
       "type": "integer",
       "description": "Maximum number of jobs to collect.",
       "editor": "number",
-      "default": 150,
+      "default": 20,
+      "prefill": 20,
       "minimum": 1
     },
     "collectOnly": {

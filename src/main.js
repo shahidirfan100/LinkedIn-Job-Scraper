@@ -71,7 +71,7 @@ const validateAndParseInput = (input) => {
             keywords: ['software engineer'],
             location: '',
             timeRange: 'anytime',
-            maxJobs: Math.max(1, Math.min(1000, Number(maxJobs) || Number(results_wanted) || 50)),
+            maxJobs: Math.max(1, Math.min(1000, Number(maxJobs) || Number(results_wanted) || 20)),
         };
     }
 
@@ -103,7 +103,7 @@ const validateAndParseInput = (input) => {
         keywords: processedKeywords,
         location: location || '',
         timeRange: timeRange || posted_date || 'anytime',
-        maxJobs: Math.max(1, Math.min(1000, Number(maxJobs) || Number(results_wanted) || 50)),
+        maxJobs: Math.max(1, Math.min(1000, Number(maxJobs) || Number(results_wanted) || 20)),
     };
 };
 
@@ -143,26 +143,15 @@ const enqueuedDetailIds = new Set();
 const processedDetailIds = new Set();
 const searchContextMap = new Map();
 
+const jobBuffer = []; // Added for batching
+
 let failedRequests = 0;
 let scrapingMode = 'unknown';
 let listPagesEnqueued = 0;
 
 // -----------------------------------------------------------------
-// CONSTANT HEADERS
+// CONSTANT HEADERS (Removed to use got-scraping's dynamic fingerprinting)
 // -----------------------------------------------------------------
-
-const DEFAULT_HEADERS = {
-    'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-    'accept-language': 'en-US,en;q=0.9',
-    'accept-encoding': 'gzip, deflate, br',
-    'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/115.0',
-    'sec-fetch-dest': 'document',
-    'sec-fetch-mode': 'navigate',
-    'sec-fetch-site': 'none',
-    'sec-fetch-user': '?1',
-    'upgrade-insecure-requests': '1',
-    'cache-control': 'max-age=0',
-};
 
 // -----------------------------------------------------------------
 // NETWORK HELPERS
@@ -177,7 +166,12 @@ async function fetchGuestDetail(jobId, proxyUrl) {
         await delay(Math.random() * 500 + 200);
         const res = await gotScraping({
             url,
-            headers: { ...DEFAULT_HEADERS, referer: 'https://www.linkedin.com/jobs/search/' },
+            // Dynamically generate realistic browser headers based on the URL and proxy
+            headerGeneratorOptions: {
+                browsers: ['chrome', 'firefox', 'safari'],
+                devices: ['desktop'],
+                locales: ['en-US', 'en'],
+            },
             proxyUrl,
             timeout: { request: 15000 },
             retry: { limit: 1 },
@@ -199,7 +193,7 @@ function extractDescription($) {
     if (typeof $ !== 'function') {
         return { html: null, text: null };
     }
-    
+
     const containers = [
         'div.show-more-less-html__markup',
         'div.description__text',
@@ -225,6 +219,9 @@ function extractJobData($html, url, searchContext) {
     const title = textOf($html, 'h2.top-card-layout__title, h1.top-card-layout__title, h2.topcard__title');
     const company = textOf($html, 'a.topcard__org-name-link, div.topcard__org-name-link');
     const companyUrl = hrefOf($html, 'a.topcard__org-name-link');
+    const companyLogo = $html('img.artdeco-entity-image').attr('data-delayed-url') || null;
+    const salary = textOf($html, 'div.salary, div.compensation__salary');
+    const applicantsCount = textOf($html, 'figcaption.num-applicants__caption');
 
     let loc = null;
     const selectors = [
@@ -243,22 +240,28 @@ function extractJobData($html, url, searchContext) {
     }
 
     const postedAt = textOf($html, 'span.posted-time-ago__text, span.topcard__flavor--metadata');
-    let seniority = null, workType = null;
+    let seniority = null, workType = null, jobFunction = null, companyIndustry = null;
     $html('li.description__job-criteria-item').each((_, li) => {
         const h = $html(li).find('h3').text().toLowerCase();
         const val = pick($html(li).find('span.description__job-criteria-text').text());
         if (h.includes('seniority') || h.includes('level')) seniority = val;
         if (h.includes('employment') || h.includes('type')) workType = val;
+        if (h.includes('function')) jobFunction = val;
+        if (h.includes('industries')) companyIndustry = val;
     });
 
     return {
         jobUrl: url,
         jobId: getJobId(url),
-        title, company, companyUrl,
+        title, company, companyUrl, companyLogo,
         location: loc,
+        salary,
+        applicantsCount,
         postedAt,
         workType,
         seniority,
+        jobFunction,
+        companyIndustry,
         collectedAt: new Date().toISOString(),
         searchQuery: searchContext?.searchQuery || '',
         searchLocation: searchContext?.searchLocation || '',
@@ -277,12 +280,11 @@ scrapingMode = parsedInput.mode;
 
 const {
     collectOnly = false,
-    collectDetails = true,
     maxConcurrency,
     proxyConfiguration,
 } = input;
 
-const shouldCollectDetails = collectDetails !== false && collectOnly !== true;
+const shouldCollectDetails = collectOnly !== true;
 const { mode, urls, keywords, location, timeRange, maxJobs } = parsedInput;
 
 // Use a reasonable default concurrency if not specified
@@ -299,6 +301,8 @@ const concurrency = Math.max(3, Math.min(12, targetConcurrency));
 
 const crawler = new CheerioCrawler({
     proxyConfiguration: proxyConfig,
+    useSessionPool: true,
+    persistCookiesPerSession: true,
     // Allow enough requests: ~40 list pages + maxJobs detail pages + retries
     maxRequestsPerCrawl: Math.max(maxJobs + 100, 1500),
     maxConcurrency: concurrency,
@@ -306,15 +310,29 @@ const crawler = new CheerioCrawler({
     requestHandlerTimeoutSecs: 30,
     navigationTimeoutSecs: 30,
     maxRequestRetries: 3,
-    
+
     // Accept octet-stream content type to avoid LinkedIn blocking
     additionalMimeTypes: ['application/octet-stream'],
+
+    // Configure got-scraping for stealth
+    preNavigationHooks: [
+        async (ctx) => {
+            // Randomize delay slightly to simulate human request timing pacing
+            await delay(Math.random() * 500 + 200);
+
+            // Allow got-scraping to do its magic without hardcoded header interference
+            ctx.request.headers = {
+                ...ctx.request.headers,
+                referer: 'https://www.linkedin.com/jobs/search/',
+            };
+        },
+    ],
 
     // ---------------------
     // Request Handler
     // ---------------------
     requestHandler: async (ctx) => {
-        const { request, $, addRequests, proxyInfo } = ctx;
+        const { request, $, addRequests, proxyInfo, session } = ctx;
 
         // Validate that $ is a function (Cheerio instance)
         if (typeof $ !== 'function') {
@@ -409,28 +427,33 @@ const crawler = new CheerioCrawler({
         if (!jobId || processedDetailIds.has(jobId)) return;
 
         const searchContext = searchContextMap.get(jobId) || { searchQuery: '', searchLocation: '', searchTimeRange: 'anytime' };
-        let $html = $;
-        let { html: descHtml, text: descText } = extractDescription($html);
 
-        if (!descText || descText.length < 50) {
+        let localHtml = $;
+        let descResult = extractDescription(localHtml);
+
+        if (!descResult.text || descResult.text.length < 50) {
             const apiHtml = await fetchGuestDetail(jobId, proxyInfo?.url);
             if (apiHtml) {
                 const cheerio = await import('cheerio');
-                $html = cheerio.load(apiHtml);
-                const desc = extractDescription($html);
-                descHtml = desc.html;
-                descText = desc.text;
+                localHtml = cheerio.load(apiHtml);
+                descResult = extractDescription(localHtml);
             }
         }
 
-        const jobData = extractJobData($html, request.url, searchContext);
-        jobData.descriptionHtml = descHtml;
-        jobData.descriptionText = descText;
+        const jobData = extractJobData(localHtml, request.url, searchContext);
+        jobData.descriptionHtml = descResult.html;
+        jobData.descriptionText = descResult.text;
 
-        if (jobData.title || descText) {
-            await Dataset.pushData(jobData);
+        if (jobData.title || descResult.text) {
+            jobBuffer.push(jobData);
             processedDetailIds.add(jobId);
-            log.info(`✓ [${processedDetailIds.size}/${maxJobs}] ${jobData.title || 'Job'} @ ${jobData.company || 'Company'}`);
+
+            if (jobBuffer.length >= 10) {
+                const batch = [...jobBuffer];
+                jobBuffer.length = 0;
+                await Dataset.pushData(batch);
+                log.info(`✓ Pushed batch of ${batch.length} jobs. Total collected: ${processedDetailIds.size}/${maxJobs}`);
+            }
         } else {
             log.warning(`Skipped job ${jobId} (no data)`);
             processedDetailIds.add(jobId);
@@ -442,24 +465,26 @@ const crawler = new CheerioCrawler({
     // ---------------------
     // Failed Request Handler
     // ---------------------
-    failedRequestHandler: async ({ request }, error) => {
+    failedRequestHandler: async ({ request, session, response }, error) => {
         failedRequests++;
-        log.error(`Request failed (${request.userData.label}): ${request.url.substring(0, 100)} - ${error.message}`);
+        const statusCode = response?.statusCode;
+        log.error(`Request failed (${request.userData.label}): ${request.url.substring(0, 100)} - ${error.message} (Status: ${statusCode})`);
+
+        // Retire the session if we hit LinkedIn's 999 or rate limits
+        if (statusCode === 999 || statusCode === 429 || error.message.includes('999')) {
+            session?.retire();
+            log.warning(`Session retired due to block/rate-limit on ${request.url}`);
+        }
+
         if (request.userData.label === 'DETAIL') {
             const jobId = request.userData.jobId || getJobId(request.url);
             if (jobId) processedDetailIds.add(jobId);
         }
-        if (error.message.includes('999') && failedRequests > 10) {
+        if ((statusCode === 999 || error.message.includes('999')) && failedRequests > 10) {
             log.warning('High failure rate detected — applying cooldown...');
             await delay(2000);
         }
-    },
-
-    preNavigationHooks: [
-        async ({ request }) => {
-            request.headers = { ...DEFAULT_HEADERS, referer: 'https://www.linkedin.com/jobs/search/' };
-        },
-    ],
+    } // End of failedRequestHandler
 });
 
 // -----------------------------------------------------------------
@@ -525,6 +550,12 @@ if (!initialRequests.length) {
 
     await crawler.addRequests(initialRequests);
     await crawler.run();
+
+    if (jobBuffer.length > 0) {
+        await Dataset.pushData(jobBuffer);
+        log.info(`✓ Pushed final batch of ${jobBuffer.length} jobs. Total collected: ${processedDetailIds.size}/${maxJobs}`);
+        jobBuffer.length = 0;
+    }
 
     const runTime = Date.now() - startTime;
     log.info(`✅ Completed ${processedDetailIds.size} jobs in ${mode} mode (${Math.round(runTime / 1000)}s)`);

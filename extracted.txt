@@ -1,0 +1,15 @@
+Fetching https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/4334367155
+{
+  title: 'Software Engineer, Fullstack, Early Career',
+  company: 'Notion',
+  companyUrl: 'https://www.linkedin.com/company/notionhq?trk=public_jobs_topcard-org-name',
+  companyLogo: 'https://media.licdn.com/dms/image/v2/D4E0BAQGwvcv_1tHZ4w/company-logo_100_100/B4EZW25gE2GgAQ-/0/1742530282185/notionhq_logo?e=2147483647&v=beta&t=h_sgZm5R2TgP9Fpbo95m2wmxnSDoEz06eupofZwpSXs',
+  location: 'New York, NY',
+  salary: '$126,000.00/yr - $180,000.00/yr',
+  applicantsCount: 'Over 200 applicants',
+  postedAt: '3 days ago',
+  workType: 'Full-time',
+  seniority: 'Entry level',
+  jobFunction: 'Engineering and Information Technology',
+  companyIndustry: 'Software Development'
+}

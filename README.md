@@ -1,202 +1,216 @@
 # LinkedIn Jobs Scraper
 
-[![Apify Actor](https://img.shields.io/badge/Apify-Actor-blue)](https://apify.com)
-[![Run on Apify](https://img.shields.io/badge/Run%20on-Apify-green)](https://apify.com/shahidirfan100/linkedin-jobs-scraper)
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-
-Extract comprehensive job listings from LinkedIn with ease. This powerful scraper retrieves detailed job information including titles, companies, locations, salaries, and full descriptions to help you analyze job markets, discover opportunities, and gather valuable employment data.
-
-## Table of Contents
-
-- [Description](#description)
-- [Features](#features)
-- [Input](#input)
-- [Output](#output)
-- [Usage](#usage)
-- [Configuration](#configuration)
-- [API Reference](#api-reference)
-- [Changelog](#changelog)
-- [License](#license)
-
-## Description
-
-The LinkedIn Jobs Scraper is a robust tool designed to extract job postings from LinkedIn's job search platform. Whether you're conducting market research, tracking industry trends, or building job databases, this scraper provides reliable access to current job opportunities across various industries and locations.
-
-Perfect for recruiters, researchers, analysts, and anyone needing structured job data from LinkedIn's extensive job board.
+Extract comprehensive job listings from LinkedIn with ease. Collect detailed job information including titles, companies, locations, and descriptions at scale. Perfect for job market analysis, opportunity discovery, and employment data gathering.
 
 ## Features
 
-- **Comprehensive Data Extraction**: Captures essential job details including position titles, employer information, geographic locations, compensation details, employment types, and complete job descriptions.
-- **Flexible Search Capabilities**: Customize searches with specific keywords, target locations, and time-based filters to focus on relevant job markets.
-- **Advanced Scraping Techniques**: Utilizes sophisticated methods to navigate LinkedIn's platform and ensure high success rates in data collection.
-- **Proxy Integration**: Leverages Apify Proxy services with residential IP addresses to maintain anonymity and prevent detection during scraping operations.
-- **Customizable Parameters**: Control scraping depth, concurrency levels, and result limits to optimize performance and resource usage.
-- **Structured JSON Results**: Outputs clean, machine-readable data perfect for integration with databases, analytics tools, and automated workflows.
+- **Comprehensive Data Extraction** — Captures essential job details including position titles, employer information, geographic locations, and complete job descriptions
+- **Flexible Search Capabilities** — Customize searches with specific keywords, target locations, and time-based filters to focus on relevant job markets
+- **High Success Rates** — Reliable data collection with built-in error handling and retry mechanisms
+- **Proxy Integration** — Leverages residential IP addresses to maintain anonymity and prevent detection
+- **Customizable Parameters** — Control result limits and concurrency levels to optimize performance
+- **Structured JSON Results** — Outputs clean, machine-readable data perfect for integration with databases and analytics tools
 
-## Input
+## Use Cases
 
-Configure your job scraping parameters using the following JSON schema:
+### Job Market Research
+Analyze current job trends and market demands across industries. Understand salary ranges, required skills, and geographic distribution of opportunities.
+
+### Recruitment and Talent Acquisition
+Discover qualified candidates by monitoring job postings from target companies. Track hiring patterns and identify emerging skill requirements.
+
+### Competitive Intelligence
+Monitor competitor hiring activities and organizational changes. Gain insights into industry movements and strategic workforce planning.
+
+### Data Analysis and Reporting
+Build comprehensive datasets for business intelligence and decision making. Create reports on employment trends, geographic job distribution, and industry growth areas.
+
+### Career Planning and Job Search
+Research salary expectations, job requirements, and career opportunities in specific fields. Identify high-demand skills and emerging job categories.
+
+## Input Parameters
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `query` | string | Yes | - | Search terms for job titles or skills (e.g., "software engineer", "marketing manager") |
-| `location` | string | No | "Worldwide" | Geographic area for job search (e.g., "New York", "London", "Remote") |
-| `timeRange` | string | No | "24h" | Time frame for job postings: "24h", "7d", "30d", or "any" |
-| `maxJobs` | number | No | 50 | Maximum number of job listings to extract (range: 1-1000) |
-| `collectOnly` | boolean | No | false | When enabled, gathers only job URLs for faster processing with minimal data |
-| `maxConcurrency` | number | No | 5 | Number of simultaneous scraping requests (range: 1-10) |
-| `proxyConfiguration` | object | No | - | Proxy settings for enhanced anonymity and performance |
+| `query` | String | Yes | — | Search terms for job titles or skills (e.g., "software engineer") |
+| `location` | String | No | "Worldwide" | Geographic area for job search (e.g., "New York", "London") |
+| `timeRange` | String | No | "anytime" | Time frame for job postings: "24h", "7d", "30d", or "anytime" |
+| `maxJobs` | Integer | No | `20` | Maximum number of job listings to extract (1-1000) |
+| `collectOnly` | Boolean | No | `false` | When enabled, gathers only job URLs for faster processing |
+| `maxConcurrency` | Integer | No | `5` | Number of simultaneous requests (1-10) |
+| `proxyConfiguration` | Object | No | — | Proxy settings for enhanced anonymity |
 
-### Input Example
+## Output Data
 
-```json
-{
-  "query": "artificial intelligence specialist",
-  "location": "Silicon Valley",
-  "timeRange": "7d",
-  "maxJobs": 200,
-  "collectOnly": false,
-  "maxConcurrency": 4,
-  "proxyConfiguration": {
-    "useApifyProxy": true,
-    "groups": ["RESIDENTIAL"]
-  }
-}
-```
-
-## Output
-
-Results are delivered as a JSON array containing detailed job objects with the following structure:
+Each item in the dataset contains:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `title` | string | Job position title |
-| `company` | string | Organization offering the position |
-| `location` | string | Geographic location of the job |
-| `salary` | string | Compensation information when disclosed |
-| `workType` | string | Employment classification (Full-time, Part-time, etc.) |
-| `descriptionText` | string | Plain-text job posting content |
-| `descriptionHtml` | string | HTML of the job description when available |
-| `jobUrl` | string | Direct hyperlink to the original LinkedIn job listing |
-| `postedAt` | string | Publication date of the job posting |
-| `collectedAt` | string | Timestamp of data extraction |
+| `jobUrl` | String | Direct hyperlink to the LinkedIn job listing |
+| `jobId` | String | Unique identifier for the job posting |
+| `title` | String | Job position title |
+| `company` | String | Organization offering the position |
+| `companyUrl` | String | Link to the company's LinkedIn page |
+| `location` | String | Geographic location of the job |
+| `postedAt` | String | Publication date of the job posting |
+| `workType` | String | Employment classification (Full-time, Part-time, etc.) |
+| `seniority` | String | Experience level required |
+| `collectedAt` | String | Timestamp of data extraction |
+| `searchQuery` | String | The search keyword used |
+| `searchLocation` | String | The location filter applied |
+| `searchTimeRange` | String | The time range filter applied |
+| `descriptionHtml` | String | HTML content of the job description |
+| `descriptionText` | String | Plain-text job posting content |
 
-### Output Example
+## Usage Examples
 
-```json
-[
-  {
-    "title": "Senior AI Engineer",
-    "company": "Innovative Tech Solutions",
-    "location": "San Francisco, CA",
-    "salary": "$140,000 - $180,000 annually",
-    "workType": "Full-time",
-    "descriptionText": "Join our cutting-edge team developing next-generation AI applications...",
-    "jobUrl": "https://www.linkedin.com/jobs/view/senior-ai-engineer-at-innovative-tech-solutions-987654",
-    "postedAt": "2023-11-10",
-    "collectedAt": "2023-11-15T14:20:00Z"
-  }
-]
-```
+### Basic Job Search
 
-## Usage
-
-### Running via Apify Console
-
-1. Navigate to the [LinkedIn Jobs Scraper](https://apify.com/shahidirfan100/linkedin-jobs-scraper) page on Apify.
-2. Select **Run** to initiate the actor.
-3. Input your desired parameters in the provided JSON editor.
-4. Track execution progress and retrieve results upon completion.
-
-### Running via Apify API
-
-Execute the scraper programmatically using Apify's REST API:
-
-```bash
-curl -X POST "https://api.apify.com/v2/acts/shahidirfan100~linkedin-jobs-scraper/runs?token=YOUR_API_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": "product manager",
-    "location": "Remote",
-    "maxJobs": 75
-  }'
-```
-
-Replace `YOUR_API_TOKEN` with your personal Apify API token.
-
-### Retrieving Results
-
-Once execution finishes, download your dataset:
-
-```bash
-curl "https://api.apify.com/v2/acts/shahidirfan100~linkedin-jobs-scraper/runs/LAST_RUN_ID/dataset/items?token=YOUR_API_TOKEN"
-```
-
-## Configuration
-
-### Proxy Configuration
-
-Enhance scraping reliability and avoid IP restrictions with residential proxy setup:
+Extract recent software engineering positions:
 
 ```json
 {
-  "proxyConfiguration": {
-    "useApifyProxy": true,
-    "groups": ["RESIDENTIAL"]
-  }
+    "query": "software engineer",
+    "location": "United States",
+    "maxJobs": 50
 }
 ```
 
-### Performance Tuning
+### Advanced Filtering
 
-- **Concurrency**: Increase `maxConcurrency` for faster processing, but monitor proxy availability.
-- **Result Limits**: Use `maxJobs` to control dataset size and associated costs.
-- **Quick Mode**: Enable `collectOnly` for rapid URL harvesting when full details aren't needed.
+Search for remote marketing jobs posted in the last week:
 
-### Error Management
+```json
+{
+    "query": "marketing manager",
+    "location": "Remote",
+    "timeRange": "7d",
+    "maxJobs": 100,
+    "maxConcurrency": 3
+}
+```
 
-The scraper automatically manages common issues like rate limiting and temporary access blocks. For persistent problems, consider:
-- Reducing concurrent connections
-- Switching proxy groups
-- Adjusting search parameters
+### High-Volume Collection
 
-### Troubleshooting & Debugging
+Gather extensive job data for market analysis:
 
-- Check the actor logs in the Apify Console — look for recurring 4xx/5xx codes (rate limits or blocks) and response lengths that are zero or very short.
-- If you see repeated list failures, reduce `maxConcurrency` or narrow the search query to fewer results.
-- When detail fetches fail, set `collectOnly: true` to confirm the list pipeline still finds job URLs and to isolate the problem to detail scraping.
-- Use proxy group rotation (switch residential vs. datacenter) and check `failureStreak*` log messages that indicate automated proxy rotation.
+```json
+{
+    "query": "data scientist",
+    "location": "Worldwide",
+    "timeRange": "30d",
+    "maxJobs": 500,
+    "proxyConfiguration": {
+        "useApifyProxy": true,
+        "apifyProxyGroups": ["RESIDENTIAL"]
+    }
+}
+```
 
-### Stealth & Speed Best Practices ⚡️🛡️
+## Sample Output
 
-- Use randomized request headers and user agents to emulate a variety of browsers and platforms; enable the default proxy configuration to maintain session anonymity.
-- Keep a small random delay between requests (jitter) and scale `maxConcurrency` to match your proxy capacity — a higher concurrency may be faster but increases the risk of throttling.
-- Prefer smaller, repeated runs instead of a single massive scrape to reduce guest endpoint noise and to maintain data freshness.
-- For highest stealth, run the actor with residential proxies and lower concurrency, then gradually increase until you find a reliable sweet spot.
+```json
+{
+    "jobUrl": "https://www.linkedin.com/jobs/view/senior-software-engineer",
+    "jobId": "4334367155",
+    "title": "Senior Software Engineer",
+    "company": "Tech Innovations Inc",
+    "companyUrl": "https://www.linkedin.com/company/tech-innovations",
+    "location": "San Francisco, CA",
+    "postedAt": "2 days ago",
+    "workType": "Full-time",
+    "seniority": "Mid-Senior level",
+    "collectedAt": "2024-01-15T10:30:00Z",
+    "searchQuery": "software engineer",
+    "searchLocation": "United States",
+    "searchTimeRange": "anytime",
+    "descriptionHtml": "<p>Join our team to build cutting-edge solutions...</p>",
+    "descriptionText": "Join our team to build cutting-edge solutions..."
+}
+```
 
-### Dataset Schema & Tips for Discovery
+## Tips for Best Results
 
-The actor produces a dataset with structured fields that make it easy to analyze or import into downstream systems. Key fields include `jobId`, `jobUrl`, `title`, `company`, `companyUrl`, `location`, `jobType`, `salary`, `postedAt`, `descriptionText`, `descriptionHtml`, and `collectedAt`.
+### Optimize Search Parameters
+- Use specific keywords that match actual job titles
+- Combine multiple related terms for broader results
+- Target specific locations for more relevant data
 
-To increase discoverability on Apify, ensure you keep the `title`, `description`, and `tags` on the actor's Apify page updated with relevant keywords such as "LinkedIn jobs scraper", "job listings extraction", "employment data", and similar terms.
+### Manage Result Volume
+- Start with smaller batches (20-50 jobs) for testing
+- Increase limits gradually based on your needs
+- Use time filters to focus on recent postings
 
-## API Reference
+### Enhance Reliability
+- Enable proxy configuration for better success rates
+- Adjust concurrency based on your proxy capacity
+- Monitor for any rate limiting and adjust accordingly
 
-- **Actor Identifier**: `shahidirfan100/linkedin-jobs-scraper`
-- **Input Specification**: Refer to the Input section above
-- **Output Specification**: Refer to the Output section above
+### Data Quality Checks
+- Review sample outputs before full runs
+- Verify location and time filters are working as expected
+- Check for complete job descriptions in results
 
-For comprehensive documentation, visit the [Apify platform docs](https://docs.apify.com/actors).
+## Proxy Configuration
 
-## Changelog
+For reliable results, residential proxies are recommended:
 
-### v1.0.0
-- Initial release featuring core LinkedIn job scraping capabilities.
+```json
+{
+    "proxyConfiguration": {
+        "useApifyProxy": true,
+        "apifyProxyGroups": ["RESIDENTIAL"]
+    }
+}
+```
 
-## License
+## Integrations
 
-This project is distributed under the Apache License 2.0. Review [LICENSE](LICENSE) for complete terms.
+Connect your data with:
 
----
+- **Google Sheets** — Export for analysis and reporting
+- **Airtable** — Build searchable job databases
+- **Slack** — Get notifications for new opportunities
+- **Webhooks** — Send data to custom endpoints
+- **Make** — Create automated job monitoring workflows
+- **Zapier** — Trigger actions based on job postings
 
-*Powered by Apify - Reliable web scraping infrastructure.*
+### Export Formats
+
+Download data in multiple formats:
+
+- **JSON** — For developers and APIs
+- **CSV** — For spreadsheet analysis
+- **Excel** — For business reporting
+- **XML** — For system integrations
+
+## Frequently Asked Questions
+
+### How many jobs can I collect?
+You can collect up to 1000 jobs per run. The practical limit depends on your search criteria and available results.
+
+### Can I search for jobs in multiple locations?
+Yes, use broader location terms like "United States" or "Europe", or set location to "Worldwide" for global results.
+
+### What if some job details are missing?
+Some fields may be empty if the source doesn't provide that information. This is normal and doesn't indicate an error.
+
+### How often should I run the scraper?
+Run frequency depends on your needs. For current opportunities, daily or weekly runs are common.
+
+### Can I filter by salary information?
+Salary data is included when provided by employers. Use the description field to search for compensation details.
+
+## Support
+
+For issues or feature requests, contact support through the Apify Console.
+
+### Resources
+
+- [Apify Documentation](https://docs.apify.com/)
+- [API Reference](https://docs.apify.com/api/v2)
+- [Scheduling Runs](https://docs.apify.com/schedules)
+
+## Legal Notice
+
+This actor is designed for legitimate data collection purposes. Users are responsible for ensuring compliance with website terms of service and applicable laws. Use data responsibly and respect rate limits.
