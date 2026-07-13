@@ -4,8 +4,11 @@ import { Impit } from 'impit';
 import * as cheerio from 'cheerio';
 
 const TPR_MAP = { '24h': 'r86400', '7d': 'r604800', '30d': 'r2592000' };
+const GUEST_LIST_ENDPOINT = 'https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search';
+const BUILD_MARKER = '2026-07-13-quality-fix';
 const getJobId = (str) => str?.match(/\d{8,}/)?.[0] || null;
 const pick = (str) => (str || '').trim() || null;
+const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const buildParams = (query, location, timeRange = 'anytime') => {
     const p = new URLSearchParams();
@@ -19,7 +22,7 @@ const buildParams = (query, location, timeRange = 'anytime') => {
 const buildGuestListUrl = (params, start) => {
     const p = new URLSearchParams(params);
     p.set('start', String(start));
-    return `https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?${p.toString()}`;
+    return `${GUEST_LIST_ENDPOINT}?${p.toString()}`;
 };
 
 function extractJobIds($) {
@@ -39,17 +42,15 @@ function extractJobIds($) {
 async function fetchText(client, url, retries = 3) {
     for (let attempt = 1; attempt <= retries; attempt++) {
         try {
+            await delay((attempt - 1) * 500);
             const response = await client.fetch(url, {
                 headers: { referer: 'https://www.linkedin.com/jobs/search/' },
             });
-            if (!response.ok) {
-                if (attempt < retries) await new Promise(r => setTimeout(r, 500 * attempt));
-                continue;
-            }
+            if (!response.ok) continue;
             const text = await response.text();
             if (text && text.length > 100) return text;
         } catch {
-            if (attempt < retries) await new Promise(r => setTimeout(r, 500 * attempt));
+            if (attempt < retries) await delay(500 * attempt);
         }
     }
     return null;
@@ -99,88 +100,180 @@ function extractDetail($html) {
     return { title, company, companyUrl, companyLogo, location, salary, applicantsCount, postedAt, workType, seniority, jobFunction, companyIndustry, descriptionHtml, descriptionText };
 }
 
+const validateLocation = (locationText, companyName) => {
+    if (!locationText) return null;
+    const cleaned = locationText.trim();
+    if (!cleaned) return null;
+    if (companyName && cleaned.toLowerCase() === companyName.toLowerCase()) return null;
+    const suffixes = /\b(inc\.?|llc\.?|ltd\.?|corp\.?|corporation|company|co\.?|group|solutions|technologies|tech|systems|services|enterprises|holdings|international|global|worldwide)\b/i;
+    if (suffixes.test(cleaned)) return null;
+    if (cleaned.length < 2 || /^[A-Z]{2,}$/.test(cleaned)) return null;
+    return cleaned;
+};
+
+// -----------------------------------------------------------------
+// INPUT NORMALIZATION (same as pasted code)
+// -----------------------------------------------------------------
+
+const normalizeInput = (input) => {
+    const { urls, keywords, query, location, timeRange, maxJobs, startUrl, keyword, posted_date, results_wanted } = input;
+    const hasUrls = (urls && urls.length) || (startUrl && typeof startUrl === 'string' && startUrl.trim());
+    const hasKeywords = (keywords && keywords.length) || (keyword && typeof keyword === 'string' && keyword.trim());
+    const hasLegacyQuery = query && typeof query === 'string' && query.trim();
+
+    if (!hasUrls && !hasKeywords && !hasLegacyQuery) {
+        log.warning('No input provided. Using default keyword "software engineer".');
+        return {
+            mode: 'keyword', urls: [], keywords: ['software engineer'], location: '',
+            timeRange: 'anytime', maxJobs: Math.max(1, Math.min(1000, Number(maxJobs) || Number(results_wanted) || 20)),
+        };
+    }
+
+    if (hasUrls) {
+        const processedUrls = startUrl ? [startUrl] : urls;
+        for (const u of processedUrls) {
+            if (typeof u !== 'string' || !u.includes('linkedin.com')) throw new Error(`Invalid LinkedIn URL: ${u}`);
+        }
+        return { mode: 'url', urls: processedUrls, keywords: [], location: location || '', timeRange: timeRange || posted_date || 'anytime', maxJobs: Math.max(1, Math.min(1000, Number(maxJobs) || Number(results_wanted) || 20)) };
+    }
+
+    const processedKeywords = keyword ? [keyword] : hasKeywords ? keywords : [query];
+    return { mode: 'keyword', urls: [], keywords: processedKeywords, location: location || '', timeRange: timeRange || posted_date || 'anytime', maxJobs: Math.max(1, Math.min(1000, Number(maxJobs) || Number(results_wanted) || 20)) };
+};
+
+// -----------------------------------------------------------------
+// DATASET BUFFER (from pasted code)
+// -----------------------------------------------------------------
+
+const datasetBuffer = [];
+let totalItemsPushed = 0;
+
+const flushDataset = async () => {
+    if (!datasetBuffer.length) return;
+    const items = datasetBuffer.splice(0, datasetBuffer.length);
+    await Dataset.pushData(items);
+    totalItemsPushed += items.length;
+    log.info(`Flushed ${items.length} items to dataset (total=${totalItemsPushed})`);
+};
+
+const queueItem = async (item) => {
+    datasetBuffer.push(item);
+    if (datasetBuffer.length >= 25) await flushDataset();
+};
+
+// -----------------------------------------------------------------
+// MAIN
+// -----------------------------------------------------------------
+
 await Actor.init();
 const input = (await Actor.getInput()) || {};
 const {
-    query, location, timeRange, maxJobs, results_wanted,
-    keyword, keywords, posted_date,
-    proxyConfiguration, collectOnly = false,
-    maxConcurrency = 10,
+    proxyConfiguration, collectOnly = false, maxConcurrency = 5,
 } = input;
 
-const searchQuery = keyword || query || (Array.isArray(keywords) ? keywords[0] : null) || 'software engineer';
-const searchLocation = location || '';
-const searchTimeRange = timeRange || posted_date || 'anytime';
-const targetJobs = Math.max(1, Math.min(1000, Number(maxJobs) || Number(results_wanted) || 20));
+const parsed = normalizeInput(input);
+const { mode, urls, keywords, location: searchLocation, timeRange, maxJobs: targetJobs } = parsed;
 
-log.info(`Searching "${searchQuery}" target=${targetJobs}`);
+log.info(`Searching "${keywords[0] || urls[0]}" target=${targetJobs} mode=${mode}`);
 
 const proxyConfig = await Actor.createProxyConfiguration(proxyConfiguration);
 const hasProxy = proxyConfig && (Actor.isAtHome() || process.env.APIFY_PROXY_PASSWORD);
 
-const client = new Impit({ browser: 'chrome', ignoreTlsErrors: true });
+const MAX_LIST_PAGES = Math.ceil(targetJobs / 5) + 5;
+const MAX_EMPTY_PAGES = 3;
+const concurrency = Math.max(1, Math.min(10, Number(maxConcurrency) || 5));
 
-const PAGE_SIZE = 30;
-const MAX_LIST_PAGES = 40;
-const params = buildParams(searchQuery, searchLocation, searchTimeRange);
+// ---------- COLLECT JOB IDS (fixed pagination) ----------
 
-log.info(`Fetching list pages...`);
 const allJobIds = [];
-for (let i = 0; i < MAX_LIST_PAGES && allJobIds.length < targetJobs * 2; i++) {
-    const url = buildGuestListUrl(params, i * PAGE_SIZE);
-    const html = await fetchText(client, url);
-    if (!html) continue;
-    const $ = cheerio.load(html);
-    const ids = extractJobIds($);
-    for (const id of ids) {
-        if (!allJobIds.includes(id)) allJobIds.push(id);
+let emptyPages = 0;
+
+if (mode === 'url') {
+    for (const url of urls) {
+        const jobId = getJobId(url);
+        if (jobId && !allJobIds.includes(jobId)) allJobIds.push(jobId);
+    }
+} else {
+    const client = new Impit({ browser: 'chrome', ignoreTlsErrors: true });
+    const params = buildParams(keywords[0], searchLocation, timeRange);
+    let start = 0;
+
+    for (let page = 0; page < MAX_LIST_PAGES && allJobIds.length < targetJobs; page++) {
+        const url = buildGuestListUrl(params, start);
+        const html = await fetchText(client, url);
+        if (!html) { emptyPages++; if (emptyPages >= MAX_EMPTY_PAGES) break; continue; }
+        emptyPages = 0;
+
+        const $ = cheerio.load(html);
+        const ids = extractJobIds($);
+        if (!ids.length) break;
+
+        let newCount = 0;
+        for (const id of ids) {
+            if (!allJobIds.includes(id) && allJobIds.length < targetJobs) { allJobIds.push(id); newCount++; }
+        }
+        const pageSize = ids.length;
+        start += pageSize;
+        log.debug(`List page ${page}: start=${start - pageSize}, ids=${ids.length}, new=${newCount}, total=${allJobIds.length}`);
     }
 }
 
 const selectedIds = allJobIds.slice(0, targetJobs);
-log.info(`Collected ${selectedIds.length} job IDs`);
+if (selectedIds.length < targetJobs) log.warning(`Only found ${selectedIds.length} jobs (requested ${targetJobs})`);
+if (!selectedIds.length) { log.warning('No jobs found'); await Actor.exit(); }
 
-if (selectedIds.length === 0) {
-    log.warning('No jobs found');
-    await Actor.exit();
-}
+// ---------- COLLECT DETAILS ----------
 
 if (collectOnly) {
     const now = new Date().toISOString();
-    await Dataset.pushData(selectedIds.map(id => ({
-        jobUrl: `https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/${id}`,
-        jobId: id, collectedAt: now,
-        searchQuery, searchLocation, searchTimeRange,
-    })));
+    for (const id of selectedIds) {
+        await queueItem({
+            jobUrl: `https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/${id}`,
+            jobId: id, collectedAt: now,
+            searchQuery: keywords[0] || '', searchLocation, searchTimeRange: timeRange,
+        });
+    }
+    await flushDataset();
     log.info(`Saved ${selectedIds.length} link-only items`);
     await Actor.exit();
 }
 
-const concurrency = maxConcurrency;
-const output = [];
-let detailClient = client;
-
+let client = new Impit({ browser: 'chrome', ignoreTlsErrors: true });
 for (let i = 0; i < selectedIds.length; i += concurrency) {
     const batch = selectedIds.slice(i, i + concurrency);
     if (hasProxy) {
         const proxyUrl = await proxyConfig.newUrl();
-        detailClient = new Impit({ browser: 'chrome', ignoreTlsErrors: true, proxyUrl });
+        client = new Impit({ browser: 'chrome', ignoreTlsErrors: true, proxyUrl });
     }
+
     const results = await Promise.all(batch.map(async (jobId) => {
-        const html = await fetchText(detailClient, `https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/${jobId}`);
+        const url = `https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/${jobId}`;
+        const html = await fetchText(client, url, 2);
         let detail = {};
         if (html) {
             const $ = cheerio.load(html);
             detail = extractDetail($);
+
+            // Fallback: try a second endpoint if description is missing
+            if (!detail.descriptionText || detail.descriptionText.length < 50) {
+                const fallbackHtml = await fetchText(client, `https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/${jobId}`, 1);
+                if (fallbackHtml) {
+                    const $2 = cheerio.load(fallbackHtml);
+                    const fallbackDetail = extractDetail($2);
+                    if (fallbackDetail.descriptionText && fallbackDetail.descriptionText.length > 50) {
+                        detail = fallbackDetail;
+                    }
+                }
+            }
         }
         return {
-            jobUrl: `https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/${jobId}`,
+            jobUrl: url,
             jobId,
             title: detail.title || null,
             company: detail.company || null,
             companyUrl: detail.companyUrl || null,
             companyLogo: detail.companyLogo || null,
-            location: detail.location || null,
+            location: validateLocation(detail.location, detail.company) || detail.location,
             salary: detail.salary || null,
             applicantsCount: detail.applicantsCount || null,
             postedAt: detail.postedAt || null,
@@ -191,17 +284,13 @@ for (let i = 0; i < selectedIds.length; i += concurrency) {
             descriptionText: detail.descriptionText || null,
             descriptionHtml: detail.descriptionHtml || null,
             collectedAt: new Date().toISOString(),
-            searchQuery, searchLocation, searchTimeRange,
+            searchQuery: keywords[0] || '', searchLocation, searchTimeRange: timeRange,
         };
     }));
-    output.push(...results);
-    if (output.length >= 25) {
-        await Dataset.pushData(output.splice(0, 25));
-    }
+
+    for (const item of results) await queueItem(item);
 }
 
-if (output.length > 0) {
-    await Dataset.pushData(output);
-}
+await flushDataset();
 log.info(`Completed ${selectedIds.length} jobs`);
 await Actor.exit();
