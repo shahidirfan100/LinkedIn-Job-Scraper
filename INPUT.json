@@ -1,7 +1,7 @@
 {
   "query": "software engineer",
-  "location": "Worldwide",
-  "timeRange": "24h",
+  "location": "United States",
+  "timeRange": "anytime",
   "maxJobs": 20,
   "collectOnly": false,
   "maxConcurrency": 5,

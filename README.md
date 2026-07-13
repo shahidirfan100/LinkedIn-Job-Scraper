@@ -1,72 +1,83 @@
 # LinkedIn Jobs Scraper
 
-Extract comprehensive job listings from LinkedIn with ease. Collect detailed job information including titles, companies, locations, and descriptions at scale. Perfect for job market analysis, opportunity discovery, and employment data gathering.
+Extract comprehensive job listings from LinkedIn with detailed information including titles, companies, locations, salaries, and full descriptions. This tool is perfect for job market analysis, recruitment research, competitive intelligence, and employment data gathering at scale.
 
 ## Features
 
-- **Comprehensive Data Extraction** — Captures essential job details including position titles, employer information, geographic locations, and complete job descriptions
-- **Flexible Search Capabilities** — Customize searches with specific keywords, target locations, and time-based filters to focus on relevant job markets
-- **High Success Rates** — Reliable data collection with built-in error handling and retry mechanisms
-- **Proxy Integration** — Leverages residential IP addresses to maintain anonymity and prevent detection
-- **Customizable Parameters** — Control result limits and concurrency levels to optimize performance
-- **Structured JSON Results** — Outputs clean, machine-readable data perfect for integration with databases and analytics tools
+- **Complete Job Data** - Captures job titles, employer details, locations, salary ranges, applicant counts, employment types, seniority levels, and full job descriptions
+- **Flexible Search** - Search by keywords, locations, and time filters (24 hours, 7 days, 30 days, or any time)
+- **High Reliability** - Built-in error handling, retry mechanisms, and session management ensure consistent data collection
+- **Proxy Support** - Works with residential proxies for stable access and reduced blocking
+- **Customizable Output** - Control result limits and concurrency levels to match your needs
+- **Structured Results** - Clean JSON output ready for databases, analytics, and reporting tools
 
 ## Use Cases
 
 ### Job Market Research
-Analyze current job trends and market demands across industries. Understand salary ranges, required skills, and geographic distribution of opportunities.
+Analyze current hiring trends, salary ranges, and in-demand skills across industries and locations. Track how job requirements evolve over time.
 
-### Recruitment and Talent Acquisition
-Discover qualified candidates by monitoring job postings from target companies. Track hiring patterns and identify emerging skill requirements.
-
-### Competitive Intelligence
-Monitor competitor hiring activities and organizational changes. Gain insights into industry movements and strategic workforce planning.
+### Recruitment Analytics
+Discover where competitors are hiring, what roles they prioritize, and how they position job opportunities. Understand talent acquisition patterns in your industry.
 
 ### Data Analysis and Reporting
-Build comprehensive datasets for business intelligence and decision making. Create reports on employment trends, geographic job distribution, and industry growth areas.
+Build comprehensive employment datasets for business intelligence. Create reports on geographic job distribution, industry growth, and skill demand.
 
-### Career Planning and Job Search
-Research salary expectations, job requirements, and career opportunities in specific fields. Identify high-demand skills and emerging job categories.
+### Career Planning
+Research salary expectations, job requirements, and career opportunities in specific fields. Identify high-demand roles and emerging job categories.
+
+### Automated Monitoring
+Schedule regular runs to track new job postings, monitor specific companies, or watch for opportunities matching your criteria.
+
+---
 
 ## Input Parameters
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `query` | String | Yes | — | Search terms for job titles or skills (e.g., "software engineer") |
-| `location` | String | No | "Worldwide" | Geographic area for job search (e.g., "New York", "London") |
-| `timeRange` | String | No | "anytime" | Time frame for job postings: "24h", "7d", "30d", or "anytime" |
-| `maxJobs` | Integer | No | `20` | Maximum number of job listings to extract (1-1000) |
-| `collectOnly` | Boolean | No | `false` | When enabled, gathers only job URLs for faster processing |
-| `maxConcurrency` | Integer | No | `5` | Number of simultaneous requests (1-10) |
-| `proxyConfiguration` | Object | No | — | Proxy settings for enhanced anonymity |
+| `query` | String | Yes | - | Job title or keywords to search (e.g., "software engineer") |
+| `location` | String | No | `"United States"` | Geographic area for the job search |
+| `timeRange` | String | No | `"anytime"` | Posting time filter: `"24h"`, `"7d"`, `"30d"`, or `"anytime"` |
+| `maxJobs` | Integer | No | `20` | Maximum number of job listings to collect (1-1000) |
+| `collectOnly` | Boolean | No | `false` | When enabled, collects only job URLs for faster processing |
+| `maxConcurrency` | Integer | No | `5` | Number of simultaneous requests (1-20) |
+| `proxyConfiguration` | Object | No | - | Proxy settings for enhanced reliability |
+
+---
 
 ## Output Data
 
-Each item in the dataset contains:
+Each item in the dataset contains the following fields:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `jobUrl` | String | Direct hyperlink to the LinkedIn job listing |
 | `jobId` | String | Unique identifier for the job posting |
+| `jobUrl` | String | Direct URL to the LinkedIn job listing |
 | `title` | String | Job position title |
-| `company` | String | Organization offering the position |
+| `company` | String | Name of the hiring organization |
 | `companyUrl` | String | Link to the company's LinkedIn page |
-| `location` | String | Geographic location of the job |
-| `postedAt` | String | Publication date of the job posting |
-| `workType` | String | Employment classification (Full-time, Part-time, etc.) |
+| `companyLogo` | String | URL of the company logo image |
+| `location` | String | Geographic location of the position |
+| `salary` | String | Salary information (when provided by employer) |
+| `applicantsCount` | String | Number of applicants |
+| `workType` | String | Employment type (Full-time, Part-time, etc.) |
 | `seniority` | String | Experience level required |
+| `jobFunction` | String | Job function category |
+| `companyIndustry` | String | Industry sector |
+| `postedAt` | String | When the job was posted |
+| `descriptionText` | String | Plain-text version of the job description |
+| `descriptionHtml` | String | HTML version of the job description |
 | `collectedAt` | String | Timestamp of data extraction |
 | `searchQuery` | String | The search keyword used |
 | `searchLocation` | String | The location filter applied |
-| `searchTimeRange` | String | The time range filter applied |
-| `descriptionHtml` | String | HTML content of the job description |
-| `descriptionText` | String | Plain-text job posting content |
+| `searchTimeRange` | String | The time range filter used |
+
+---
 
 ## Usage Examples
 
 ### Basic Job Search
 
-Extract recent software engineering positions:
+Search for software engineering positions:
 
 ```json
 {
@@ -92,7 +103,7 @@ Search for remote marketing jobs posted in the last week:
 
 ### High-Volume Collection
 
-Gather extensive job data for market analysis:
+Gather extensive data for market analysis:
 
 ```json
 {
@@ -107,49 +118,55 @@ Gather extensive job data for market analysis:
 }
 ```
 
+---
+
 ## Sample Output
 
 ```json
 {
-    "jobUrl": "https://www.linkedin.com/jobs/view/senior-software-engineer",
     "jobId": "4334367155",
+    "jobUrl": "https://www.linkedin.com/jobs/view/4334367155",
     "title": "Senior Software Engineer",
     "company": "Tech Innovations Inc",
     "companyUrl": "https://www.linkedin.com/company/tech-innovations",
+    "companyLogo": "https://media.licdn.com/demo/logo.png",
     "location": "San Francisco, CA",
-    "postedAt": "2 days ago",
+    "salary": "$150,000 - $200,000",
+    "applicantsCount": "Over 100 applicants",
     "workType": "Full-time",
     "seniority": "Mid-Senior level",
-    "collectedAt": "2024-01-15T10:30:00Z",
+    "jobFunction": "Engineering and Information Technology",
+    "companyIndustry": "Software Development",
+    "postedAt": "1 week ago",
+    "descriptionText": "Join our team to build cutting-edge solutions...",
+    "descriptionHtml": "<p>Join our team to build cutting-edge solutions...</p>",
+    "collectedAt": "2026-07-13T10:30:00Z",
     "searchQuery": "software engineer",
     "searchLocation": "United States",
-    "searchTimeRange": "anytime",
-    "descriptionHtml": "<p>Join our team to build cutting-edge solutions...</p>",
-    "descriptionText": "Join our team to build cutting-edge solutions..."
+    "searchTimeRange": "anytime"
 }
 ```
 
+---
+
 ## Tips for Best Results
 
-### Optimize Search Parameters
-- Use specific keywords that match actual job titles
-- Combine multiple related terms for broader results
-- Target specific locations for more relevant data
+### Optimize Search Terms
+Use specific keywords that match actual job titles. Combine related terms for broader coverage. Test different variations to find the most relevant results.
 
-### Manage Result Volume
-- Start with smaller batches (20-50 jobs) for testing
-- Increase limits gradually based on your needs
-- Use time filters to focus on recent postings
+### Manage Collection Size
+Start with smaller batches (20-50 jobs) for testing and validation. Increase limits gradually based on your data needs and proxy capacity.
 
-### Enhance Reliability
-- Enable proxy configuration for better success rates
-- Adjust concurrency based on your proxy capacity
-- Monitor for any rate limiting and adjust accordingly
+### Use Time Filters
+Apply time range filters to focus on recent postings. The "24h" filter is ideal for daily monitoring while "7d" works well for weekly updates.
 
-### Data Quality Checks
-- Review sample outputs before full runs
-- Verify location and time filters are working as expected
-- Check for complete job descriptions in results
+### Configure Proxies
+Enable proxy configuration for better success rates, especially for larger collections. Residential proxies provide the best reliability.
+
+### Monitor Performance
+Review sample outputs to verify data quality. Adjust concurrency settings to balance speed and stability.
+
+---
 
 ## Proxy Configuration
 
@@ -164,42 +181,51 @@ For reliable results, residential proxies are recommended:
 }
 ```
 
+---
+
 ## Integrations
 
 Connect your data with:
 
-- **Google Sheets** — Export for analysis and reporting
-- **Airtable** — Build searchable job databases
-- **Slack** — Get notifications for new opportunities
-- **Webhooks** — Send data to custom endpoints
-- **Make** — Create automated job monitoring workflows
-- **Zapier** — Trigger actions based on job postings
+- **Google Sheets** - Export for analysis and reporting
+- **Airtable** - Build searchable job databases
+- **Slack** - Get notifications for new opportunities
+- **Webhooks** - Send data to custom endpoints
+- **Make** - Create automated job monitoring workflows
+- **Zapier** - Trigger actions based on job postings
 
 ### Export Formats
 
 Download data in multiple formats:
 
-- **JSON** — For developers and APIs
-- **CSV** — For spreadsheet analysis
-- **Excel** — For business reporting
-- **XML** — For system integrations
+- **JSON** - For developers and APIs
+- **CSV** - For spreadsheet analysis
+- **Excel** - For business reporting
+- **XML** - For system integrations
+
+---
 
 ## Frequently Asked Questions
 
 ### How many jobs can I collect?
-You can collect up to 1000 jobs per run. The practical limit depends on your search criteria and available results.
+You can collect up to 1000 jobs per run. The practical limit depends on your search criteria and available results from LinkedIn.
 
 ### Can I search for jobs in multiple locations?
 Yes, use broader location terms like "United States" or "Europe", or set location to "Worldwide" for global results.
 
 ### What if some job details are missing?
-Some fields may be empty if the source doesn't provide that information. This is normal and doesn't indicate an error.
+Some fields may be empty if the source does not provide that information. Salary data, for example, is only included when employers choose to list it.
 
 ### How often should I run the scraper?
-Run frequency depends on your needs. For current opportunities, daily or weekly runs are common.
+Run frequency depends on your needs. For current opportunities, daily or weekly runs are common. Use the "24h" time filter for daily monitoring.
 
-### Can I filter by salary information?
-Salary data is included when provided by employers. Use the description field to search for compensation details.
+### Can I filter by company or industry?
+Use specific keywords in your search query to target particular companies or roles. The output includes company name and industry for each job.
+
+### Does this work without a proxy?
+The tool works without a proxy, but using residential proxies significantly improves reliability, especially for larger collections.
+
+---
 
 ## Support
 
@@ -210,6 +236,8 @@ For issues or feature requests, contact support through the Apify Console.
 - [Apify Documentation](https://docs.apify.com/)
 - [API Reference](https://docs.apify.com/api/v2)
 - [Scheduling Runs](https://docs.apify.com/schedules)
+
+---
 
 ## Legal Notice
 

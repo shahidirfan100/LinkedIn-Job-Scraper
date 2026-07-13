@@ -4,12 +4,17 @@
   "description": "Fast and stealthy LinkedIn jobs scraper using Cheerio, advanced fingerprinting, and session pooling.",
   "type": "module",
   "scripts": {
-    "start": "node src/main.js"
+    "start": "node src/main.js",
+    "lint": "eslint src/",
+    "lint:fix": "eslint --fix src/"
+  },
+  "devDependencies": {
+    "eslint": "^9.29.0"
   },
   "dependencies": {
-    "apify": "^3.6.0",
-    "crawlee": "^3.16.0",
+    "apify": "^3.7.2",
+    "crawlee": "^3.17.0",
     "cheerio": "^1.2.0",
-    "got-scraping": "^4.2.1"
+    "impit": "^0.14.2"
   }
 }

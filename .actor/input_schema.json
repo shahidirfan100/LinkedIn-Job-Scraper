@@ -1,6 +1,6 @@
 {
-  "title": "LinkedIn Jobs Scraper (HTTP + Cheerio, v3)",
-  "description": "Fast LinkedIn jobs scraper using guest endpoints; robust description fetch. Alpine build style.",
+  "title": "LinkedIn Jobs Scraper",
+  "description": "Extract comprehensive job listings from LinkedIn with detailed information including titles, companies, locations, salaries, and full descriptions.",
   "type": "object",
   "schemaVersion": 1,
   "properties": {
@@ -17,7 +17,8 @@
       "type": "string",
       "description": "Geographic location (e.g., United States, Germany, Remote).",
       "editor": "textfield",
-      "default": "United States"
+      "default": "United States",
+      "prefill": "United States"
     },
     "timeRange": {
       "title": "Posted time filter",
@@ -36,7 +37,8 @@
         "Past 7 days",
         "Past 30 days"
       ],
-      "default": "anytime"
+      "default": "anytime",
+      "prefill": "anytime"
     },
     "maxJobs": {
       "title": "Max jobs",
