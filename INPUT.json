@@ -4,7 +4,7 @@
   "timeRange": "anytime",
   "maxJobs": 20,
   "collectOnly": false,
-  "maxConcurrency": 5,
+  "maxConcurrency": 10,
   "proxyConfiguration": {
     "useApifyProxy": true
   }

@@ -59,16 +59,17 @@
     "maxConcurrency": {
       "title": "Max concurrency",
       "type": "integer",
-      "description": "Parallel HTTP requests (CheerioCrawler).",
+      "description": "Number of parallel detail requests.",
       "editor": "number",
       "default": 5,
+      "prefill": 5,
       "minimum": 1,
       "maximum": 20
     },
     "proxyConfiguration": {
       "title": "Proxy configuration",
       "type": "object",
-      "description": "Select proxies to be used by the crawler (Apify Proxy recommended; RESIDENTIAL helps).",
+      "description": "Select proxies to be used by the crawler (Apify Proxy recommended).",
       "editor": "proxy",
       "prefill": {
         "useApifyProxy": true
