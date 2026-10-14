@@ -17,8 +17,7 @@
       "type": "string",
       "description": "Geographic location (e.g., United States, Germany, Remote).",
       "editor": "textfield",
-      "default": "United States",
-      "prefill": "United States"
+      "default": "United States"
     },
     "timeRange": {
       "title": "Posted time filter",
@@ -37,8 +36,7 @@
         "Past 7 days",
         "Past 30 days"
       ],
-      "default": "anytime",
-      "prefill": "anytime"
+      "default": "anytime"
     },
     "maxJobs": {
       "title": "Max jobs",
@@ -46,7 +44,6 @@
       "description": "Maximum number of jobs to collect.",
       "editor": "number",
       "default": 20,
-      "prefill": 20,
       "minimum": 1
     },
     "collectOnly": {
@@ -62,21 +59,20 @@
       "description": "Number of parallel detail requests.",
       "editor": "number",
       "default": 5,
-      "prefill": 5,
       "minimum": 1,
       "maximum": 20
     },
     "proxyConfiguration": {
       "title": "Proxy configuration",
       "type": "object",
-      "description": "Select proxies to be used by the crawler (Apify Proxy recommended).",
+      "description": "Uses Apify Residential proxies by default for smooth, unblocked runs on LinkedIn. Switch proxy group to datacenter or select No proxy if preferred.",
       "editor": "proxy",
-      "prefill": {
-        "useApifyProxy": true
+      "default": {
+        "useApifyProxy": true,
+        "apifyProxyGroups": [
+          "RESIDENTIAL"
+        ]
       }
     }
-  },
-  "required": [
-    "query"
-  ]
+  }
 }

@@ -13,8 +13,8 @@
   },
   "dependencies": {
     "apify": "^3.7.2",
-    "crawlee": "^3.17.0",
     "cheerio": "^1.2.0",
-    "impit": "^0.14.2"
+    "crawlee": "^3.18.1",
+    "impit": "^0.14.5"
   }
 }

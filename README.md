@@ -39,7 +39,7 @@ LinkedIn Jobs Scraper collects job listings from LinkedIn based on your search k
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `query` | String | Yes | - | Job title or keywords to search on LinkedIn Jobs |
+| `query` | String | No | `"software engineer"` | Job title or keywords to search on LinkedIn Jobs |
 | `location` | String | No | `"United States"` | Geographic area for the job search |
 | `timeRange` | String | No | `"anytime"` | Posting time filter: `"24h"`, `"7d"`, `"30d"`, or `"anytime"` |
 | `maxJobs` | Integer | No | `20` | Maximum number of job listings to collect (1-1000) |
@@ -197,7 +197,7 @@ Use specific company names or role keywords in your search query. The output inc
 
 ### Does this Actor require a proxy?
 
-The Actor works without a proxy, but using Apify Proxy with residential groups improves reliability, especially for larger collections.
+Apify Residential proxies are used by default for the smoothest, most reliable runs on LinkedIn. You can switch the proxy group to datacenter or select "No proxy" if you prefer, and the Actor automatically falls back to datacenter if residential is unavailable on your account.
 
 ### Can I export the data to CSV or Excel?
 

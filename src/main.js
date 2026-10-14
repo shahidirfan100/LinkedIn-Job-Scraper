@@ -15,10 +15,52 @@ const LINKEDIN_REFERER = 'https://www.linkedin.com/jobs/search/';
 const DEFAULT_GUEST_PAGE_STEP = 10;
 const GUEST_MAX_START = 1000;
 const DEFAULT_PROXY_POOL_SIZE = 20;
+const REQUEST_TIMEOUT_MS = 30000;
+const MAX_RETRY_AFTER_MS = 30000;
+
+// Browser/TLS profiles verified against the LinkedIn guest endpoints on impit 0.14.5.
+// Ranked by live reliability (list + detail success): chrome136/chrome142 were the
+// most stable, then chrome124/firefox128/firefox/firefox144. Profiles such as
+// chrome151, chrome125, firefox135 and chrome110-116/ios18/okhttp are excluded
+// because they were throttled or failed the TLS handshake.
+const IMPIT_PROFILES = [
+    'chrome136',
+    'chrome142',
+    'chrome124',
+    'firefox128',
+    'firefox',
+    'firefox144',
+];
+
+// LinkedIn serves an obfuscated JavaScript "challenge" page (usually HTTP 429,
+// occasionally HTTP 200) when it throttles a fingerprint. Detect it so the actor
+// retries with a fresh profile/proxy session instead of parsing it as empty data.
+const BLOCK_BODY_PATTERN = /_0x[0-9a-f]{4,}|captcha|authwall|challenge|unusual traffic|suspicious activity/i;
+const VALID_LIST_MARKERS = ['base-card', 'job-search-card'];
+const VALID_DETAIL_MARKERS = ['top-card-layout', 'topcard__', 'show-more-less-html__markup'];
 
 const delay = (ms) => new Promise((resolve) => {
     setTimeout(resolve, ms);
 });
+
+const isBlockStatus = (status) => status === 429 || status === 999;
+
+const hasMarker = (body, markers) => markers.some((marker) => body.includes(marker));
+
+const looksLikeBlock = (status, body) => {
+    if (isBlockStatus(status)) return true;
+    if (status !== 200 || !body) return false;
+    if (hasMarker(body, VALID_LIST_MARKERS) || hasMarker(body, VALID_DETAIL_MARKERS)) return false;
+    return BLOCK_BODY_PATTERN.test(body);
+};
+
+const parseRetryAfter = (value) => {
+    if (!value) return 0;
+    const seconds = Number(value);
+    if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000);
+    const date = Date.parse(value);
+    return Number.isFinite(date) ? Math.max(0, date - Date.now()) : 0;
+};
 
 const abs = (href) => {
     if (!href) return null;
@@ -66,7 +108,7 @@ const validateAndParseInput = (input) => {
             mode: 'keyword',
             urls: [],
             keywords: ['software engineer'],
-            location: 'Worldwide',
+            location: 'United States',
             timeRange: 'anytime',
             maxJobs: Math.max(1, Math.min(1000, Number(maxJobs) || Number(resultsWanted) || 20)),
         };
@@ -343,18 +385,24 @@ async function fetchTextWithRetry(getClient, url, {
 }) {
     let lastError;
     for (let attempt = 1; attempt <= retries; attempt++) {
+        let retryAfterMs = 0;
         try {
-            const response = await getClient(attempt, lastError).fetch(url, {
+            // Rotate to a fresh client (new browser profile + proxy session) on every
+            // retry so a throttled fingerprint or IP is abandoned, not repeated.
+            const client = await getClient({ rotate: attempt > 1 });
+            const response = await client.fetch(url, {
                 method: 'GET',
                 headers: { referer },
                 redirect: 'follow',
             });
             const body = await response.text();
+            const status = response.status;
 
-            if (response.status === 429 || response.status === 999 || response.status >= 500) {
-                lastError = new Error(`HTTP ${response.status}`);
+            if (looksLikeBlock(status, body)) {
+                retryAfterMs = parseRetryAfter(response.headers.get('retry-after'));
+                lastError = new Error(`blocked by anti-bot page (HTTP ${status})`);
             } else if (!response.ok) {
-                throw new Error(`HTTP ${response.status}`);
+                throw new Error(`HTTP ${status}`);
             } else if (body.length < minLength) {
                 lastError = new Error(`short body (${body.length} bytes)`);
             } else {
@@ -365,10 +413,17 @@ async function fetchTextWithRetry(getClient, url, {
         }
 
         if (attempt < retries) {
-            const isRateLimit = lastError.message.includes('429') || lastError.message.includes('999');
-            const waitMs = isRateLimit
-                ? attempt * 2500 + Math.floor(Math.random() * 1500)
-                : attempt * 750 + Math.floor(Math.random() * 500);
+            const status = Number(lastError.message.match(/HTTP (\d+)/)?.[1]) || 0;
+            const isThrottle = retryAfterMs > 0
+                || isBlockStatus(status)
+                || status >= 500
+                || lastError.message.startsWith('blocked')
+                || lastError.message.includes('short body');
+            const waitMs = retryAfterMs > 0
+                ? Math.min(retryAfterMs, MAX_RETRY_AFTER_MS)
+                : isThrottle
+                    ? attempt * 1500 + Math.floor(Math.random() * 800)
+                    : attempt * 750 + Math.floor(Math.random() * 500);
             log.debug(`${label} retry ${attempt}/${retries - 1} for ${url.substring(0, 120)}: ${lastError.message}`);
             await delay(waitMs);
         }
@@ -399,7 +454,7 @@ const shouldCollectDetails = collectDetails !== false && collectOnly !== true;
 const { mode, maxJobs } = parsedInput;
 const DATASET_BATCH_SIZE = Math.max(5, Math.min(100, Number(datasetBatchSize) || 25));
 const PROGRESS_LOG_EVERY = Math.max(5, Math.min(100, Number(progressLogEvery) || 25));
-const REQUEST_RETRIES = Math.max(2, Math.min(6, Number(maxRequestRetriesInput) || 3));
+const REQUEST_RETRIES = Math.max(2, Math.min(8, Number(maxRequestRetriesInput) || 5));
 const requestedMaxPages = Number(maxPages) || Number(maxPagesLegacy) || 100;
 const autoMaxPages = maxJobs >= 100
     ? Math.ceil(GUEST_MAX_START / DEFAULT_GUEST_PAGE_STEP)
@@ -414,6 +469,8 @@ const searchContextMap = new Map();
 const listSummaryMap = new Map();
 let totalItemsPushed = 0;
 let failedRequests = 0;
+let detailFallbacks = 0;
+let listFailures = 0;
 
 const flushDatasetBuffer = async (reason = 'periodic') => {
     if (!datasetBuffer.length) return;
@@ -434,7 +491,19 @@ let proxyConfig = null;
 const wantsApifyProxy = proxyConfiguration?.useApifyProxy;
 const hasCustomProxyUrls = Array.isArray(proxyConfiguration?.proxyUrls) && proxyConfiguration.proxyUrls.length > 0;
 if (hasCustomProxyUrls || (wantsApifyProxy && Actor.isAtHome())) {
-    proxyConfig = await Actor.createProxyConfiguration(proxyConfiguration);
+    try {
+        proxyConfig = await Actor.createProxyConfiguration(proxyConfiguration);
+    } catch (error) {
+        // Requested groups (e.g. RESIDENTIAL) may be unavailable on the account.
+        // Fall back to default Apify Proxy, then to no proxy, instead of aborting.
+        log.warning(`Proxy configuration failed (${error.message}); retrying with default Apify Proxy.`);
+        try {
+            proxyConfig = await Actor.createProxyConfiguration({ useApifyProxy: true });
+        } catch (fallbackError) {
+            log.warning(`Apify Proxy unavailable (${fallbackError.message}); continuing without proxy.`);
+            proxyConfig = null;
+        }
+    }
 } else if (wantsApifyProxy && !Actor.isAtHome()) {
     log.info('Local run detected: skipping Apify Proxy because it is only available on Apify platform.');
 }
@@ -443,28 +512,50 @@ const clients = [];
 let clientCursor = 0;
 const targetProxyPoolSize = proxyConfig
     ? Math.max(concurrency + REQUEST_RETRIES, Math.min(50, Number(proxyPoolSize) || DEFAULT_PROXY_POOL_SIZE))
-    : 1;
+    : Math.min(IMPIT_PROFILES.length, 4);
+// Proxy runs may rotate through many sessions; local runs stay bounded to the
+// profile pool so profile rotation still works without unbounded client growth.
+const maxClientPoolSize = proxyConfig ? Math.max(targetProxyPoolSize, 60) : targetProxyPoolSize;
 
-for (let i = 0; i < targetProxyPoolSize; i++) {
+let profileCursor = 0;
+const nextProfile = () => IMPIT_PROFILES[profileCursor++ % IMPIT_PROFILES.length];
+
+const createClient = async () => {
+    const index = clients.length;
     let proxyUrl;
     if (proxyConfig) {
         try {
-            proxyUrl = await proxyConfig.newUrl(`li_${i}`);
+            proxyUrl = await proxyConfig.newUrl(`li_${index}`);
         } catch (error) {
-            log.warning(`Proxy session li_${i} failed to initialize: ${error.message}`);
+            log.warning(`Proxy session li_${index} failed to initialize: ${error.message}`);
             proxyUrl = await proxyConfig.newUrl();
         }
     }
-    clients.push(new Impit({
-        browser: 'chrome',
+    return new Impit({
+        browser: nextProfile(),
         ignoreTlsErrors: true,
+        timeout: REQUEST_TIMEOUT_MS,
         ...(proxyUrl && { proxyUrl }),
-    }));
+    });
+};
+
+for (let i = 0; i < targetProxyPoolSize; i++) {
+    clients.push(await createClient());
 }
 
-const getClient = () => {
+const getClient = async ({ rotate = false } = {}) => {
+    // rotate=true is used on retries: it hands back a brand-new profile + proxy
+    // session so a throttled fingerprint is dropped instead of retried as-is.
+    if (rotate && clients.length < maxClientPoolSize) {
+        const fresh = await createClient();
+        clients.push(fresh);
+        return fresh;
+    }
+    if (clientCursor >= clients.length && clients.length < maxClientPoolSize) {
+        clients.push(await createClient());
+    }
     const client = clients[clientCursor % clients.length];
-    clientCursor++;
+    clientCursor += 1;
     return client;
 };
 
@@ -518,17 +609,19 @@ const processDetailJob = async (jobId) => {
             }
         } else {
             failedRequests++;
+            detailFallbacks++;
             log.debug(`Skipped job ${jobId} because no detail data was parsed.`);
             await queueDatasetItem(fallback);
         }
     } catch (error) {
         failedRequests++;
-        log.warning(`DETAIL failed for ${jobId}: ${error.message}`);
+        detailFallbacks++;
+        // Recoverable throttling is expected on high-volume runs; keep it out of the
+        // normal log and report the aggregate count in the final summary instead.
+        log.debug(`DETAIL fallback for ${jobId} after ${REQUEST_RETRIES} attempts: ${error.message}`);
         await queueDatasetItem(fallback);
     }
 };
-
-let pumpDetailQueue;
 
 const runQueuedDetailJob = (jobId) => {
     runningDetailRequests++;
@@ -544,7 +637,7 @@ const runQueuedDetailJob = (jobId) => {
         });
 };
 
-pumpDetailQueue = () => {
+const pumpDetailQueue = () => {
     while (runningDetailRequests < detailConcurrency && detailQueue.length) {
         runQueuedDetailJob(detailQueue.shift());
     }
@@ -627,7 +720,9 @@ for (const search of initialSearches) {
             }
         } catch (error) {
             failedRequests++;
-            log.warning(`LIST failed at start=${start}: ${error.message}`);
+            listFailures++;
+            // Recoverable throttling is reported in the final summary, not per page.
+            log.debug(`LIST fallback at start=${start} after ${REQUEST_RETRIES} attempts: ${error.message}`);
             if (error.message.includes('400') && start >= GUEST_MAX_START) {
                 hitListBoundary = true;
                 break;
@@ -648,15 +743,18 @@ if (shouldCollectDetails) await waitForDetailQueue();
 await flushDatasetBuffer('final');
 
 const runTime = Math.round((Date.now() - startedAt) / 1000);
+const failureNote = failedRequests > 0
+    ? ` Failed requests=${failedRequests} (list=${listFailures}, detail fallbacks=${detailFallbacks})`
+    : '';
 if (totalItemsPushed < maxJobs) {
     const reason = hitListBoundary
         ? `LinkedIn guest search endpoint stopped before target at start=${GUEST_MAX_START}; this exact search exposed ${jobIds.length} unique IDs.`
         : `This exact search exposed ${jobIds.length} unique IDs.`;
-    log.warning(`Target not reached: requested=${maxJobs}, output=${totalItemsPushed}. ${reason} Failed requests=${failedRequests}`);
+    log.warning(`Target not reached: requested=${maxJobs}, output=${totalItemsPushed}. ${reason}${failureNote}`);
 } else if (totalItemsPushed < Math.min(maxJobs, jobIds.length)) {
-    log.warning(`Completed with partial detail output: ${totalItemsPushed}/${Math.min(maxJobs, jobIds.length)} items. Failed requests=${failedRequests}`);
+    log.warning(`Completed with partial detail output: ${totalItemsPushed}/${Math.min(maxJobs, jobIds.length)} items.${failureNote}`);
 } else {
-    log.info(`Completed ${totalItemsPushed} jobs in ${mode} mode (${runTime}s). Failed requests=${failedRequests}`);
+    log.info(`Completed ${totalItemsPushed} jobs in ${mode} mode (${runTime}s).${failureNote}`);
 }
 
 await Actor.exit();
